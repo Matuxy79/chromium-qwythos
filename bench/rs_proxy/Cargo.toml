@@ -1,0 +1,18 @@
+[package]
+name = "rs_proxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["stream"] }
+bytes = "1"
+futures-util = "0.3"
+
+# Give Rust every advantage the benchmark can honestly grant it.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

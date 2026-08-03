@@ -1,0 +1,62 @@
+{
+  "direct": {
+    "label": "direct",
+    "requests": 300,
+    "concurrency": 1,
+    "throughput_rps": 1312.1,
+    "ttft_ms": {
+      "p50": 0.68,
+      "p95": 0.985,
+      "p99": 1.163,
+      "mean": 0.72
+    },
+    "total_ms": {
+      "p50": 0.688,
+      "p95": 0.997,
+      "mean": 0.73
+    },
+    "bytes_per_response": 39883,
+    "rss_mb_idle": null,
+    "rss_mb_loaded": null
+  },
+  "python": {
+    "label": "python",
+    "requests": 300,
+    "concurrency": 1,
+    "throughput_rps": 711.5,
+    "ttft_ms": {
+      "p50": 1.215,
+      "p95": 1.717,
+      "p99": 2.104,
+      "mean": 1.252
+    },
+    "total_ms": {
+      "p50": 1.327,
+      "p95": 1.894,
+      "mean": 1.371
+    },
+    "bytes_per_response": 39883,
+    "rss_mb_idle": 62.4,
+    "rss_mb_loaded": 63.5
+  },
+  "rust": {
+    "label": "rust",
+    "requests": 300,
+    "concurrency": 1,
+    "throughput_rps": 238.5,
+    "ttft_ms": {
+      "p50": 0.824,
+      "p95": 1.201,
+      "p99": 1.34,
+      "mean": 0.862
+    },
+    "total_ms": {
+      "p50": 3.053,
+      "p95": 4.075,
+      "mean": 4.153
+    },
+    "bytes_per_response": 39883,
+    "rss_mb_idle": 5.5,
+    "rss_mb_loaded": 6.2
+  }
+}
