@@ -21,7 +21,9 @@ export default defineConfig({
 		APP_BUILD_HASH: JSON.stringify(process.env.APP_BUILD_HASH || 'dev-build')
 	},
 	build: {
-		sourcemap: true
+		// Sourcemaps are the single largest memory consumer in the rollup pass and
+		// are dead weight in a shipped container. Keep them for local dev builds only.
+		sourcemap: process.env.ENV === 'dev'
 	},
 	worker: {
 		format: 'es'
