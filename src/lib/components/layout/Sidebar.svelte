@@ -92,6 +92,8 @@
 	import DropdownMenu from '../common/DropdownMenu.svelte';
 	import CheckIcon from '../icons/Check.svelte';
 	import MoreHorizontalIcon from './Sidebar/icons/MoreHorizontal.svelte';
+	import BrandMenu from './Sidebar/BrandMenu.svelte';
+	import { getMenuItemMeta, isMenuItemVisible, getActiveMenuItemId } from './Sidebar/navItems';
 
 	const BREAKPOINT = 768;
 	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace'];
@@ -146,68 +148,6 @@
 	let sharedFolders: any[] = [];
 
 	$: pinnedItems = $settings?.pinnedMenuItems ?? DEFAULT_PINNED_ITEMS;
-
-	const isMenuItemVisible = (id) => {
-		switch (id) {
-			case 'notes':
-				return (
-					($config?.features?.enable_notes ?? false) &&
-					($user?.role === 'admin' || ($user?.permissions?.features?.notes ?? true))
-				);
-			case 'workspace':
-				return (
-					$user?.role === 'admin' ||
-					$user?.permissions?.workspace?.models ||
-					$user?.permissions?.workspace?.knowledge ||
-					$user?.permissions?.workspace?.prompts ||
-					$user?.permissions?.workspace?.tools ||
-					$user?.permissions?.workspace?.skills
-				);
-			case 'automations':
-				return (
-					$config?.features?.enable_automations &&
-					($user?.role === 'admin' || $user?.permissions?.features?.automations)
-				);
-			case 'calendar':
-				return (
-					$config?.features?.enable_calendar &&
-					($user?.role === 'admin' || $user?.permissions?.features?.calendar)
-				);
-			case 'playground':
-				return $user?.role === 'admin';
-			default:
-				return false;
-		}
-	};
-
-	const getMenuItemMeta = (id) => {
-		const items = {
-			notes: { label: 'Notes', href: '/notes', iconType: 'note' },
-			workspace: { label: 'Workspace', href: '/workspace', iconType: 'workspace' },
-			automations: { label: 'Automations', href: '/automations', iconType: 'automations' },
-			calendar: { label: 'Calendar', href: '/calendar', iconType: 'calendar' },
-			playground: { label: 'Playground', href: '/playground', iconType: 'playground' }
-		};
-		return items[id];
-	};
-
-	const menuItemPathPrefixes = {
-		notes: '/notes',
-		workspace: '/workspace',
-		calendar: '/calendar',
-		automations: '/automations',
-		playground: '/playground'
-	};
-
-	const getActiveMenuItemId = (pathname) => {
-		for (const [id, pathPrefix] of Object.entries(menuItemPathPrefixes)) {
-			if (pathname === pathPrefix || pathname.startsWith(`${pathPrefix}/`)) {
-				return id;
-			}
-		}
-
-		return null;
-	};
 
 	$: activeMenuItemId = getActiveMenuItemId($page.url.pathname);
 
@@ -968,6 +908,24 @@
 			</div>
 
 			<div class="-gap-0.5">
+				<div class="" on:click|stopPropagation>
+					<BrandMenu {newChatHandler} {itemClickHandler} side="bottom" align="start">
+						<Tooltip content={$i18n.t('Menu')} placement="right">
+							<button
+								type="button"
+								class=" cursor-pointer flex size-8 items-center justify-center transition group"
+								aria-label={$i18n.t('Menu')}
+							>
+								<div
+									class=" self-center flex size-[30px] items-center justify-center rounded-lg transition group-hover:bg-gray-50 dark:group-hover:bg-gray-900"
+								>
+									<MoreHorizontalIcon className="size-4" strokeWidth="2" />
+								</div>
+							</button>
+						</Tooltip>
+					</BrandMenu>
+				</div>
+
 				<div class="">
 					<Tooltip content={$i18n.t('New Chat')} placement="right">
 						<a
@@ -1016,7 +974,7 @@
 
 				{#each pinnedItems as itemId (itemId)}
 					{@const meta = getMenuItemMeta(itemId)}
-					{#if meta && isMenuItemVisible(itemId)}
+					{#if meta && isMenuItemVisible(itemId, $user, $config)}
 						<div class="">
 							<Tooltip content={$i18n.t(meta.label)} placement="right">
 								<a
@@ -1126,28 +1084,31 @@
 			<div
 				class="sidebar px-1 pt-1.5 pb-1 flex justify-between space-x-1 text-gray-600 dark:text-gray-400 sticky top-0 z-10 -mb-2"
 			>
-				<a
-					class="flex items-center rounded-xl size-8.5 h-full justify-center hover:bg-gray-50 dark:hover:bg-gray-900 transition no-drag-region"
-					href="/"
-					draggable="false"
-					on:click={newChatHandler}
-				>
-					<img
-						crossorigin="anonymous"
-						src="{WEBUI_BASE_URL}/static/favicon.png"
-						class="sidebar-new-chat-icon size-5 rounded-full"
-						alt=""
-					/>
-				</a>
+				<BrandMenu {newChatHandler} {itemClickHandler}>
+					<Tooltip content={$i18n.t('Menu')} placement="bottom">
+						<button
+							type="button"
+							class="flex flex-1 items-center gap-1.5 min-w-0 rounded-xl px-0.5 h-full hover:bg-gray-50 dark:hover:bg-gray-900 transition no-drag-region"
+							aria-label={$i18n.t('Menu')}
+						>
+							<span class="flex items-center justify-center rounded-xl size-8.5 shrink-0">
+								<img
+									crossorigin="anonymous"
+									src="{WEBUI_BASE_URL}/static/favicon.png"
+									class="sidebar-new-chat-icon size-5 rounded-full"
+									alt=""
+								/>
+							</span>
+							<span
+								id="sidebar-webui-name"
+								class="self-center font-normal text-gray-700 dark:text-gray-200 truncate"
+							>
+								{$WEBUI_NAME}
+							</span>
+						</button>
+					</Tooltip>
+				</BrandMenu>
 
-				<a href="/" class="flex flex-1 px-0.5" on:click={newChatHandler}>
-					<div
-						id="sidebar-webui-name"
-						class=" self-center font-normal text-gray-700 dark:text-gray-200"
-					>
-						{$WEBUI_NAME}
-					</div>
-				</a>
 				<Tooltip
 					content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
 					placement="bottom"
@@ -1230,7 +1191,7 @@
 					<div id="pinned-menu-items-list">
 						{#each pinnedItems as itemId (itemId)}
 							{@const meta = getMenuItemMeta(itemId)}
-							{#if meta && isMenuItemVisible(itemId)}
+							{#if meta && isMenuItemVisible(itemId, $user, $config)}
 								<div
 									class="px-1 flex justify-center text-gray-700 dark:text-gray-300"
 									data-id={itemId}

@@ -2191,6 +2191,8 @@ async def get_app_config(request: Request):
                     'enable_calendar': config.get('calendar.enable'),
                     'enable_automations': config.get('automations.enable'),
                     'enable_notes': config.get('notes.enable'),
+                    'enable_council': config.get('council.enable'),
+                    'enable_subagents': config.get('subagents.enable'),
                     'enable_context_compaction': config.get('chat.context_compaction.enable'),
                     'enable_web_search': config.get('web.search.enable'),
                     'enable_web_search_confirmation': config.get('web.search.confirmation.enable'),
