@@ -78,6 +78,9 @@ from qwythos.tools.builtin import (
     read_memory_path,
     replace_memory_content,
     replace_note_content,
+    run_llm_council,
+    run_parallel_sub_agents,
+    run_sub_agent,
     search_calendar_events,
     search_channel_messages,
     search_channels,
@@ -553,6 +556,7 @@ async def get_builtin_tools(
         'ui.enable_user_webhooks',
         'subagents.enable',
         'subagents.background_enabled',
+        'council.enable',
     )
 
     async def has_user_permission(feature_key: str) -> bool:
@@ -647,7 +651,16 @@ async def get_builtin_tools(
         and getattr(request.state, 'internal', False) is not True
         and getattr(request.state, 'direct', False) is not True
     ):
-        builtin_functions.extend([delegate_task, timer])
+        builtin_functions.extend([delegate_task, timer, run_sub_agent, run_parallel_sub_agents])
+
+    # LLM Council - multi-model deliberation with peer ranking and chairman synthesis
+    if (
+        is_builtin_tool_enabled('council')
+        and config.get('council.enable')
+        and getattr(request.state, 'internal', False) is not True
+        and getattr(request.state, 'direct', False) is not True
+    ):
+        builtin_functions.append(run_llm_council)
 
     # Add memory tools when memory is enabled and the model allows this builtin category.
     if (

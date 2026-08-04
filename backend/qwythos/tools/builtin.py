@@ -1592,6 +1592,187 @@ async def timer(
 
 
 # =============================================================================
+# LLM COUNCIL TOOL
+# =============================================================================
+
+
+async def run_llm_council(
+    question: str,
+    models: str = '',
+    chairman_model: str = '',
+    __request__: Request = None,
+    __user__: dict = None,
+    __event_emitter__=None,
+) -> str:
+    """
+    Convene a council of multiple LLMs to deliberate on a question through a
+    3-stage process: each council model answers independently, the models then
+    peer-rank the anonymized answers, and finally a chairman model synthesizes
+    the best final answer. Use this for hard, ambiguous, or high-stakes questions
+    where a single model's answer may be unreliable.
+
+    :param question: The question or problem for the council to deliberate on
+    :param models: Comma-separated model IDs to seat on the council (minimum 2). Leave empty to use the configured council.models default
+    :param chairman_model: Model ID of the chairman who synthesizes the final answer. Leave empty to use the configured default or the first council model
+    :return: The chairman's synthesized final answer, with a deliberation summary
+    """
+    if __request__ is None:
+        return 'Error: request context not available.'
+
+    from qwythos.utils.council import run_council
+
+    return await run_council(
+        question,
+        models,
+        chairman_model,
+        request=__request__,
+        user_data=__user__ or {},
+        event_emitter=__event_emitter__,
+    )
+
+
+# =============================================================================
+# SUB-AGENT TOOLS
+# =============================================================================
+
+from pydantic import BaseModel, Field
+
+MAX_PARALLEL_SUB_AGENTS = 5
+
+
+class SubAgentTaskItem(BaseModel):
+    """A single sub-agent task specification."""
+
+    description: str = Field(
+        description="Brief task summary shown to the user as status text, written in the user's language."
+    )
+    prompt: str = Field(
+        description='Detailed instructions for the sub-agent, in whatever language best suits the task.'
+    )
+
+
+async def run_sub_agent(
+    description: str,
+    prompt: str,
+    __request__: Request = None,
+    __user__: dict = None,
+    __metadata__: dict = None,
+    __chat_id__: str = None,
+    __message_id__: str = None,
+) -> str:
+    """
+    Delegate a task to a sub-agent for autonomous completion.
+
+    If a task requires 3+ steps of investigation or complex analysis, delegate
+    it to this tool instead of performing it yourself. The sub-agent runs in a
+    fresh context with NO access to the current conversation history — include
+    all necessary context in the prompt. It executes until completion and
+    returns only the final result, keeping the main conversation clean.
+
+    :param description: Brief task summary shown to the user as status text, written in the user's language
+    :param prompt: Detailed instructions for the sub-agent, in whatever language best suits the task
+    :return: JSON with the sub-agent's final response after task completion
+    """
+    if __request__ is None:
+        return json.dumps({'error': 'Request context not available. Cannot run sub-agent.'})
+    if getattr(__request__.state, 'internal', False) is True:
+        return json.dumps({'error': 'Sub-agents cannot delegate recursively.'})
+    if not (description or '').strip() or not (prompt or '').strip():
+        return json.dumps({'error': 'description and prompt must not be empty.'})
+
+    from qwythos.utils.subagents import delegate
+
+    result = await delegate(
+        prompt.strip(),
+        description.strip(),
+        False,
+        request=__request__,
+        user_data=__user__ or {},
+        metadata=__metadata__ or {},
+        parent_chat_id=__chat_id__ or '',
+        parent_message_id=__message_id__,
+    )
+    if result.startswith('Error:'):
+        return json.dumps({'error': result}, ensure_ascii=False)
+    return json.dumps(
+        {
+            'note': 'The user does NOT see this result directly - only you (the main agent) can see it.',
+            'result': result,
+        },
+        ensure_ascii=False,
+    )
+
+
+async def run_parallel_sub_agents(
+    tasks: list[SubAgentTaskItem],
+    __request__: Request = None,
+    __user__: dict = None,
+    __metadata__: dict = None,
+    __chat_id__: str = None,
+    __message_id__: str = None,
+) -> str:
+    """
+    Run multiple independent sub-agent tasks in parallel (concurrently).
+
+    Use this instead of calling run_sub_agent multiple times when you have 2 or
+    more tasks that do NOT depend on each other's results. Each sub-agent runs in
+    a fresh context with NO access to the conversation history — include all
+    necessary context in each prompt. They execute simultaneously and finish much
+    faster than sequential calls.
+
+    :param tasks: List of task objects, each with a "description" (brief summary in the user's language) and a "prompt" (detailed instructions)
+    :return: JSON with a "results" array in the same order as tasks; each element has "description" and either "result" or "error"
+    """
+    if __request__ is None:
+        return json.dumps({'error': 'Request context not available. Cannot run sub-agents.'})
+    if getattr(__request__.state, 'internal', False) is True:
+        return json.dumps({'error': 'Sub-agents cannot delegate recursively.'})
+
+    validated = []
+    for i, task in enumerate(tasks or []):
+        item = task if isinstance(task, SubAgentTaskItem) else SubAgentTaskItem.model_validate(task)
+        if not item.description.strip() or not item.prompt.strip():
+            return json.dumps({'error': f'tasks[{i}]: description and prompt must not be empty.'})
+        validated.append(item)
+
+    if not validated:
+        return json.dumps({'error': 'tasks array is empty.'})
+    if len(validated) > MAX_PARALLEL_SUB_AGENTS:
+        return json.dumps(
+            {'error': f'tasks count ({len(validated)}) exceeds the maximum of {MAX_PARALLEL_SUB_AGENTS}.'}
+        )
+
+    from qwythos.utils.subagents import delegate
+
+    async def run_one(item: SubAgentTaskItem) -> dict:
+        try:
+            result = await delegate(
+                item.prompt.strip(),
+                item.description.strip(),
+                False,
+                request=__request__,
+                user_data=__user__ or {},
+                metadata=__metadata__ or {},
+                parent_chat_id=__chat_id__ or '',
+                parent_message_id=__message_id__,
+            )
+            if result.startswith('Error:'):
+                return {'description': item.description, 'error': result}
+            return {'description': item.description, 'result': result}
+        except Exception as exc:
+            return {'description': item.description, 'error': str(exc) or type(exc).__name__}
+
+    results = await asyncio.gather(*(run_one(item) for item in validated))
+    return json.dumps(
+        {
+            'note': 'The user does NOT see these results directly - only you (the main agent) can see them.',
+            'results': list(results),
+        },
+        ensure_ascii=False,
+    )
+
+
+# =============================================================================
 # CHANNELS TOOLS
 # =============================================================================
 
