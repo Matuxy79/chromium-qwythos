@@ -2093,7 +2093,10 @@ async def get_app_config(request: Request):
 
     onboarding = False
     if user is None:
-        onboarding = not await Users.has_users()
+        onboarding = (
+            not await Config.get('ui.onboarding_completed', False)
+            and not await Users.has_users()
+        )
 
     license_metadata = getattr(app.state, 'LICENSE_METADATA', None)
     user_count = await Users.get_num_users() if license_metadata else None

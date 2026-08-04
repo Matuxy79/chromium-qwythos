@@ -547,6 +547,7 @@ async def create_admin_user(email: str, password: str, name: str = 'Admin'):
         )
         if user:
             log.info(f'Admin account created successfully: {email}')
+            await Config.upsert({'ui.onboarding_completed': True})
             return user
         else:
             log.error('Failed to create admin account from environment variables')

@@ -39,6 +39,7 @@
 	import ImportModal from '../ImportModal.svelte';
 	import ViewSelector from './common/ViewSelector.svelte';
 	import CommunityDiscover from './common/CommunityDiscover.svelte';
+	import BuiltinToolsShowcase from './Tools/BuiltinToolsShowcase.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
 	import ChevronDown from '../icons/ChevronDown.svelte';
 	import ChevronUp from '../icons/ChevronUp.svelte';
@@ -606,18 +607,24 @@
 				</div>
 			</div>
 		{:else}
-			<div class="flex w-full flex-col items-center justify-center py-16 pb-24">
-				<div class="max-w-sm text-center text-gray-900 dark:text-gray-100">
-					<div class="mb-1.5 text-sm">{$i18n.t('No tools found')}</div>
-					<div class="text-center text-xs leading-5 text-gray-500">
-						{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
+			{#if query}
+				<div class="flex w-full flex-col items-center justify-center py-16 pb-24">
+					<div class="max-w-sm text-center text-gray-900 dark:text-gray-100">
+						<div class="mb-1.5 text-sm">{$i18n.t('No tools found')}</div>
+						<div class="text-center text-xs leading-5 text-gray-500">
+							{$i18n.t('Try adjusting your search or filter to find what you are looking for.')}
+						</div>
 					</div>
 				</div>
-			</div>
+			{:else}
+				<BuiltinToolsShowcase
+					onNavigate={(path) => goto(path)}
+				/>
+			{/if}
 		{/if}
 	</div>
 
-	{#if $config?.features.enable_community_sharing}
+	{#if $config?.features.enable_community_sharing && (filteredItems ?? []).length !== 0}
 		<CommunityDiscover
 			href="https://qwythos.com/tools"
 			title={$i18n.t('Discover a tool')}

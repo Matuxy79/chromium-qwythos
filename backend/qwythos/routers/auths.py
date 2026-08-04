@@ -863,6 +863,7 @@ async def signup_handler(
         await Users.update_user_role_by_id(user.id, 'admin', db=db)
         user = await Users.get_user_by_id(user.id, db=db)
         await Config.upsert({'ui.enable_signup': False})
+        await Config.upsert({'ui.onboarding_completed': True})
 
     await apply_default_group_assignment(
         await Config.get('ui.default_group_id'),
