@@ -2020,6 +2020,10 @@ SUBAGENTS_MAX_ITERATIONS = int(os.getenv('SUBAGENTS_MAX_ITERATIONS', '30'))
 SUBAGENTS_MAX_OUTPUT = int(os.getenv('SUBAGENTS_MAX_OUTPUT', '30000'))
 SUBAGENTS_SYSTEM_PROMPT = os.getenv('SUBAGENTS_SYSTEM_PROMPT', '')
 
+ENABLE_COUNCIL = os.getenv('ENABLE_COUNCIL', 'True').lower() == 'true'
+COUNCIL_MODELS = os.getenv('COUNCIL_MODELS', '')
+COUNCIL_CHAIRMAN_MODEL = os.getenv('COUNCIL_CHAIRMAN_MODEL', '')
+
 AUTOMATION_MAX_COUNT = os.getenv('AUTOMATION_MAX_COUNT', '')
 
 AUTOMATION_MIN_INTERVAL = os.getenv('AUTOMATION_MIN_INTERVAL', '')
@@ -3069,6 +3073,9 @@ DEFAULT_CONFIG = {
     'subagents.max_iterations': SUBAGENTS_MAX_ITERATIONS,
     'subagents.max_output': SUBAGENTS_MAX_OUTPUT,
     'subagents.system_prompt': SUBAGENTS_SYSTEM_PROMPT,
+    'council.enable': ENABLE_COUNCIL,
+    'council.models': COUNCIL_MODELS,
+    'council.chairman_model': COUNCIL_CHAIRMAN_MODEL,
     'automations.max_count': AUTOMATION_MAX_COUNT,
     'automations.min_interval': AUTOMATION_MIN_INTERVAL,
     'automations.auth_token_expires_in': AUTOMATION_AUTH_TOKEN_EXPIRES_IN,

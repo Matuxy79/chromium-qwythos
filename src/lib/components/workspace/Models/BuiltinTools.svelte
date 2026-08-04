@@ -66,6 +66,12 @@
 		subagents: {
 			label: $i18n.t('Sub-agents'),
 			description: $i18n.t('Delegate focused work to parallel sub-agents')
+		},
+		council: {
+			label: $i18n.t('LLM Council'),
+			description: $i18n.t(
+				'Deliberate questions across multiple models with peer ranking and chairman synthesis'
+			)
 		}
 	};
 

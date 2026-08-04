@@ -94,6 +94,40 @@ if [[ -n "${SPACE_ID:-}" ]]; then
   export WEBUI_URL="${SPACE_HOST}"
 fi
 
+# ── Admin account seeding (any host, e.g. Railway ephemeral deploys) ────────
+# On hosts without persistent volumes (Railway hobby plan, etc.) the database
+# is wiped on every build/redeploy, so the first-user "Create Admin Account"
+# screen would reappear each time. When ADMIN_USER_EMAIL and
+# ADMIN_USER_PASSWORD are set, seed the admin in the background once the
+# server is healthy. Idempotent: on restarts where the DB survived, the
+# signup endpoint returns 403/400 and we simply skip.
+if [[ -z "${SPACE_ID:-}" && -n "${ADMIN_USER_EMAIL:-}" && -n "${ADMIN_USER_PASSWORD:-}" ]]; then
+  (
+    echo "ADMIN_USER_EMAIL set — will seed admin account once server is healthy..."
+    until curl -sf "http://localhost:${PORT}/health" > /dev/null 2>&1; do
+      sleep 1
+    done
+
+    payload=$(jq -n \
+      --arg email "$ADMIN_USER_EMAIL" \
+      --arg password "$ADMIN_USER_PASSWORD" \
+      --arg name "${ADMIN_USER_NAME:-Admin}" \
+      '{email: $email, password: $password, name: $name}')
+
+    status=$(curl -sS -o /tmp/admin_signup_response -w "%{http_code}" \
+      -X POST "http://localhost:${PORT}/api/v1/auths/signup" \
+      -H "Accept: application/json" \
+      -H "Content-Type: application/json" \
+      -d "$payload" || echo "000")
+
+    if [[ "$status" == "200" ]]; then
+      echo "Admin account '${ADMIN_USER_EMAIL}' created successfully."
+    else
+      echo "Admin seeding skipped (HTTP ${status}) — account likely already exists."
+    fi
+  ) &
+fi
+
 # ── Launch uvicorn ───────────────────────────────────────────────────────────
 
 PYTHON_CMD=$(command -v python3 || command -v python)
