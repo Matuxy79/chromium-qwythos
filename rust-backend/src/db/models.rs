@@ -4,21 +4,22 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// User record — mirrors `qwythos.models.users.User`.
+/// User record — mirrors the subset of `qwythos.models.users.User` columns
+/// the Rust backend currently needs (id/email/username/role/name/avatar +
+/// timestamps). The real table has additional profile/status columns (bio,
+/// gender, timezone, presence, JSON blobs, ...) that aren't read/written
+/// here yet — extend as later migration phases need them.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: String,
-    pub name: String,
     pub email: String,
+    pub username: Option<String>,
     pub role: String,
+    pub name: String,
     pub profile_image_url: Option<String>,
-    pub api_key: Option<String>,
-    pub created_at: Option<i64>,
-    pub updated_at: Option<i64>,
     pub last_active_at: Option<i64>,
-    pub settings: Option<String>,
-    pub info: Option<String>,
-    pub oauth_sub: Option<String>,
+    pub updated_at: Option<i64>,
+    pub created_at: Option<i64>,
 }
 
 impl User {
@@ -27,17 +28,14 @@ impl User {
         let now = Utc::now().timestamp();
         Self {
             id: Uuid::new_v4().to_string(),
-            name: name.to_string(),
             email: email.to_string(),
+            username: None,
             role: role.to_string(),
+            name: name.to_string(),
             profile_image_url: Some("/user.png".to_string()),
-            api_key: None,
-            created_at: Some(now),
-            updated_at: Some(now),
             last_active_at: Some(now),
-            settings: None,
-            info: None,
-            oauth_sub: None,
+            updated_at: Some(now),
+            created_at: Some(now),
         }
     }
 }
@@ -51,15 +49,19 @@ pub struct Auth {
     pub active: bool,
 }
 
-/// JWT claims payload.
+/// JWT claims payload — matches `create_token`'s shape in
+/// `qwythos/utils/auth.py` (`id`, `jti`, `iat`, `exp`) so tokens are
+/// interchangeable between the Rust and Python backends.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    /// User ID
-    pub sub: String,
-    /// Expiration timestamp (Unix)
-    pub exp: usize,
-    /// Issued at timestamp (Unix)
+    /// User ID (named `id`, not `sub` — matches the Python backend's claim key)
+    pub id: String,
+    /// JWT ID, used for future per-token revocation (see Phase 6)
+    pub jti: String,
+    /// Issued-at timestamp (Unix seconds)
     pub iat: usize,
+    /// Expiration timestamp (Unix seconds)
+    pub exp: usize,
 }
 
 /// Sign-in request body.

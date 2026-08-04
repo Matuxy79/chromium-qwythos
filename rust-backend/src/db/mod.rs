@@ -32,28 +32,26 @@ impl Database {
 
     /// Run pending migrations.
     ///
-    /// For Phase 0 this creates the core `users` and `auths` tables
-    /// if they don't already exist (matching the existing Alembic schema).
+    /// Against the real `backend/data/webui.db`, these `CREATE TABLE IF NOT
+    /// EXISTS` statements are no-ops — that database's schema is owned by
+    /// the Python backend's Alembic migrations. Against a fresh/dev
+    /// database they bootstrap the subset of columns this Rust backend
+    /// currently reads/writes, matching `qwythos.models.users.User` and
+    /// `qwythos.models.auths.Auth` (the real tables have additional
+    /// profile/status/JSON columns not needed yet — see db/models.rs).
     pub async fn run_migrations(&self) -> anyhow::Result<()> {
-        // We use raw SQL to create tables if not exists, maintaining
-        // compatibility with the existing Python/Alembic schema.
-        // In production, this would use sqlx::migrate! macro with
-        // proper migration files.
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS "user" (
-                id              TEXT PRIMARY KEY,
-                name            TEXT NOT NULL,
-                email           TEXT NOT NULL UNIQUE,
-                role            TEXT NOT NULL DEFAULT 'pending',
-                profile_image_url TEXT DEFAULT '/user.png',
-                api_key         TEXT,
-                created_at      BIGINT,
-                updated_at      BIGINT,
-                last_active_at  BIGINT,
-                settings        TEXT,
-                info            TEXT,
-                oauth_sub       TEXT
+                id                 TEXT PRIMARY KEY,
+                email              TEXT UNIQUE,
+                username           TEXT,
+                role               TEXT DEFAULT 'pending',
+                name               TEXT NOT NULL,
+                profile_image_url  TEXT,
+                last_active_at     BIGINT,
+                updated_at         BIGINT,
+                created_at         BIGINT
             );
             "#,
         )
@@ -63,10 +61,10 @@ impl Database {
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS auth (
-                id              TEXT PRIMARY KEY,
-                email           TEXT NOT NULL UNIQUE,
-                password        TEXT NOT NULL,
-                active          BOOLEAN NOT NULL DEFAULT true
+                id       TEXT PRIMARY KEY,
+                email    TEXT,
+                password TEXT,
+                active   BOOLEAN
             );
             "#,
         )

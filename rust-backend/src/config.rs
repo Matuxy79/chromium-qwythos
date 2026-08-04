@@ -69,9 +69,9 @@ impl AppConfig {
             port: get_or("PORT", "8080").parse()?,
             database_url: get_or(
                 "DATABASE_URL",
-                "sqlite:./data/qwythos.db?mode=rwc",
+                "sqlite://../backend/data/webui.db",
             ),
-            jwt_secret: get_or("WEBUI_SECRET_KEY", "changeme-insecure-default"),
+            jwt_secret: resolve_jwt_secret()?,
             jwt_expiry_hours: get_or("JWT_EXPIRY_HOURS", "72").parse()?,
             openai_api_base_urls: get("OPENAI_API_BASE_URLS")
                 .map(|v| split_csv(&v))
@@ -92,4 +92,32 @@ impl AppConfig {
             council_chairman_model: get("COUNCIL_CHAIRMAN_MODEL"),
         })
     }
+}
+
+/// Resolves the JWT signing secret the same way `start_windows.bat` /
+/// `qwythos/env.py` do: prefer `WEBUI_SECRET_KEY`, then
+/// `WEBUI_JWT_SECRET_KEY`, then the contents of `.webui_secret_key` next to
+/// the Python backend — so tokens stay valid across both services during
+/// the migration instead of silently signing with an insecure default.
+fn resolve_jwt_secret() -> anyhow::Result<String> {
+    if let Ok(key) = std::env::var("WEBUI_SECRET_KEY") {
+        if !key.is_empty() {
+            return Ok(key);
+        }
+    }
+    if let Ok(key) = std::env::var("WEBUI_JWT_SECRET_KEY") {
+        if !key.is_empty() {
+            return Ok(key);
+        }
+    }
+
+    let key_file =
+        std::env::var("WEBUI_SECRET_KEY_FILE").unwrap_or_else(|_| "../backend/.webui_secret_key".to_string());
+
+    std::fs::read_to_string(&key_file).map(|s| s.trim().to_string()).map_err(|e| {
+        anyhow::anyhow!(
+            "WEBUI_SECRET_KEY is not set and {key_file} could not be read: {e}. \
+             Set WEBUI_SECRET_KEY, or run the Python backend once to generate {key_file}."
+        )
+    })
 }
