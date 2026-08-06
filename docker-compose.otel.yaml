@@ -27,6 +27,8 @@ services:
       - OTEL_EXPORTER_OTLP_INSECURE=true # Use insecure connection for OTLP, remove in production
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://grafana:4317
       - OTEL_SERVICE_NAME=qwythos
+      # Persisted in the data volume so recreating the container doesn't rotate the key and log out every device.
+      - WEBUI_SECRET_KEY_FILE=/app/backend/data/.webui_secret_key
     extra_hosts:
       - host.docker.internal:host-gateway
     restart: unless-stopped
