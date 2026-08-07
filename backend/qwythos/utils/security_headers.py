@@ -17,10 +17,18 @@ class SecurityHeadersMiddleware:
         self.app = app
         # Headers derive only from env vars, which are static for the process
         # lifetime — compute them once instead of per response.
-        self._headers = list(set_security_headers().items())
+        headers = set_security_headers()
+        # Cache-Control is the one header a route may legitimately know better
+        # than a global env var: the static mounts set per-path policies
+        # (immutable for /_app/immutable, no-cache for the SPA shell). This
+        # middleware sits outside those mounts, so applying CACHE_CONTROL with
+        # replace semantics would silently flatten all of them into one value.
+        # Treat it as a default instead.
+        self._cache_control = headers.pop('Cache-Control', None)
+        self._headers = list(headers.items())
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope['type'] != 'http' or not self._headers:
+        if scope['type'] != 'http' or not (self._headers or self._cache_control):
             await self.app(scope, receive, send)
             return
 
@@ -29,6 +37,8 @@ class SecurityHeadersMiddleware:
                 headers = MutableHeaders(scope=message)
                 for key, value in self._headers:
                     headers[key] = value
+                if self._cache_control is not None:
+                    headers.setdefault('Cache-Control', self._cache_control)
             await send(message)
 
         await self.app(scope, receive, send_with_security_headers)

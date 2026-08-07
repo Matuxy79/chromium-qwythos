@@ -44,8 +44,34 @@
 	} from '$lib/stores';
 
 	import Sidebar from '$lib/components/layout/Sidebar.svelte';
-	import SettingsModal from '$lib/components/chat/SettingsModal.svelte';
-	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
+	// SettingsModal statically pulls in all 16 admin panels, which made it ~600KB
+	// of the (app) layout chunk -- downloaded and evaluated on every page load to
+	// render a dialog most sessions never open. Loading it on demand (and
+	// prewarming on idle, see onMount) takes that off the critical path.
+	//
+	// Both are latched rather than mounted inside {#if $show...}: they wrap
+	// <Modal>, which owns the close transition, so unmounting when show goes
+	// false would tear the component out mid-outro. Once loaded they stay
+	// mounted and behave exactly as before.
+	/** @type {typeof import('$lib/components/chat/SettingsModal.svelte').default | null} */
+	let SettingsModalComponent = null;
+	/** @type {typeof import('$lib/components/ChangelogModal.svelte').default | null} */
+	let ChangelogModalComponent = null;
+
+	const loadSettingsModal = async () => {
+		if (!SettingsModalComponent) {
+			SettingsModalComponent = (await import('$lib/components/chat/SettingsModal.svelte')).default;
+		}
+	};
+
+	const loadChangelogModal = async () => {
+		if (!ChangelogModalComponent) {
+			ChangelogModalComponent = (await import('$lib/components/ChangelogModal.svelte')).default;
+		}
+	};
+
+	$: if ($showSettings) loadSettingsModal();
+	$: if ($showChangelog) loadChangelogModal();
 	import AccountPending from '$lib/components/layout/Overlay/AccountPending.svelte';
 	import UpdateInfoToast from '$lib/components/layout/UpdateInfoToast.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
@@ -253,16 +279,34 @@
 		}
 
 		clearChatInputStorage();
+
+		// setModels() only reads $settings.directConnections when direct
+		// connections are enabled; otherwise it passes null and has no reason to
+		// wait for the settings response. Chaining it unconditionally cost an
+		// extra serial round trip on every boot for the majority of deployments.
+		const loadModels = () =>
+			setModels().catch((e) => console.error('Failed to load models:', e));
+		const userSettingsPromise = $config?.features?.enable_direct_connections
+			? setUserSettings(loadModels)
+			: Promise.all([setUserSettings(), loadModels()]);
+
 		await Promise.all([
 			checkLocalDBChats(),
 			setBanners().catch((e) => console.error('Failed to load banners:', e)),
 			setTools().catch((e) => console.error('Failed to load tools:', e)),
-			setUserSettings(async () => {
-				await setModels().catch((e) => console.error('Failed to load models:', e));
-			}).catch((e) => console.error('Failed to load user settings:', e))
+			userSettingsPromise.catch((e) => console.error('Failed to load user settings:', e))
 		]);
 
 		selectedTerminalId.set(localStorage.selectedTerminalId ?? null);
+
+		// Warm the chunks we deliberately took off the critical path, once the
+		// browser is idle. The user pays nothing for this at boot, and by the time
+		// they reach for Settings or scroll to a code block it is already resident.
+		const whenIdle = window.requestIdleCallback ?? ((fn: () => void) => setTimeout(fn, 2000));
+		whenIdle(() => {
+			loadSettingsModal();
+			import('$lib/components/common/CodeEditor.svelte');
+		});
 
 		const loadToolServers = setToolServers().catch((e) => {
 			console.error('Failed to load tool servers:', e);
@@ -436,8 +480,12 @@
 	};
 </script>
 
-<SettingsModal bind:show={$showSettings} />
-<ChangelogModal bind:show={$showChangelog} />
+{#if SettingsModalComponent}
+	<svelte:component this={SettingsModalComponent} bind:show={$showSettings} />
+{/if}
+{#if ChangelogModalComponent}
+	<svelte:component this={ChangelogModalComponent} bind:show={$showChangelog} />
+{/if}
 
 {#if version && compareVersion(version.latest, version.current) && ($settings?.showUpdateToast ?? true)}
 	<div class=" absolute bottom-8 right-8 z-50" in:fade={{ duration: 100 }}>

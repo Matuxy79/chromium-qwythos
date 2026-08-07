@@ -9,9 +9,8 @@
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 
 	import emojiGroups from '$lib/emoji-groups.json';
-	import emojiShortCodes from '$lib/emoji-shortcodes.json';
 
-	import { settings } from '$lib/stores';
+	import { settings, loadEmojiShortCodes } from '$lib/stores';
 	import { updateUserSettings } from '$lib/apis/users';
 
 	const i18n = getContext('i18n');
@@ -26,8 +25,20 @@
 	const MAX_RECENT = 30;
 
 	let show = false;
+	// The shortcode table is ~53KB of JSON, fetched on demand rather than bundled
+	// into the app's boot graph. Everything below already copes with it being
+	// empty, so the picker simply fills in once the chunk lands.
+	let emojiShortCodes: Record<string, string | string[]> = {};
 	let emojis = emojiShortCodes;
 	let search = '';
+
+	loadEmojiShortCodes().then((codes) => {
+		emojiShortCodes = codes;
+		// Don't clobber an in-progress search with the unfiltered set.
+		if (!search) {
+			emojis = codes;
+		}
+	});
 	let flattenedEmojis = [];
 	let emojiRows = [];
 

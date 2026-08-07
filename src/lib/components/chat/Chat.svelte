@@ -744,14 +744,22 @@
 		settingDefaults = true;
 
 		try {
-			if (!$tools) {
-				tools.set(await getTools(localStorage.token));
+			// Three independent GETs — fetch concurrently rather than chaining
+			// three round trips onto the tail of the boot.
+			const [defaultTools, defaultFunctions, defaultSkills] = await Promise.all([
+				$tools ? null : getTools(localStorage.token),
+				$functions ? null : getFunctions(localStorage.token),
+				$skills ? null : getSkills(localStorage.token)
+			]);
+
+			if (defaultTools) {
+				tools.set(defaultTools);
 			}
-			if (!$functions) {
-				functions.set(await getFunctions(localStorage.token));
+			if (defaultFunctions) {
+				functions.set(defaultFunctions);
 			}
-			if (!$skills) {
-				skills.set(await getSkills(localStorage.token));
+			if (defaultSkills) {
+				skills.set(defaultSkills);
 			}
 			if (selectedModels.length !== 1 && !atSelectedModel) {
 				return;

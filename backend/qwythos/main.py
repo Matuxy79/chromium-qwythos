@@ -5,6 +5,7 @@ import json
 import logging
 import mimetypes
 import os
+import stat
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -31,6 +32,7 @@ from starlette.datastructures import Headers
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response, StreamingResponse
+from starlette.staticfiles import NotModifiedResponse
 from starlette_compress import CompressMiddleware
 from starsessions import (
     SessionAutoloadMiddleware,
@@ -280,7 +282,127 @@ async def emit_chat_list_event(metadata: dict, chat_id: str):
         await event_emitter({'type': 'chat:list', 'data': {'chat_id': chat_id, 'folder_id': folder_id}})
 
 
-class SPAStaticFiles(StaticFiles):
+# Vite content-hashes every filename under _app/immutable, so those bodies can
+# never change under a given URL -- cache them forever. Everything else gets a
+# modest TTL, except the SPA shell, which must revalidate or clients pin
+# themselves to a stale bundle graph across deploys.
+CACHE_CONTROL_IMMUTABLE = 'public, max-age=31536000, immutable'
+CACHE_CONTROL_HTML = 'no-cache, must-revalidate'
+CACHE_CONTROL_ASSET = 'public, max-age=86400'
+
+# Extensions the build pre-compresses (see the adapter wrapper in svelte.config.js).
+PRECOMPRESSED_SUFFIXES = ('.js', '.css', '.json', '.svg', '.wasm', '.html', '.xml')
+# Preference order -- brotli first, it beats gzip on minified JS by ~15%.
+PRECOMPRESSED_ENCODINGS = (('br', '.br'), ('gzip', '.gz'))
+
+
+class _NoRangeFileResponse(FileResponse):
+    """FileResponse that ignores the client's Range header.
+
+    Range offsets address the *identity* representation of a resource. Applying
+    them to the .br/.gz file we're substituting off disk would hand back a slice
+    of the compressed stream, which decodes to garbage. A pre-compressed body
+    has to be served whole.
+    """
+
+    async def __call__(self, scope, receive, send):
+        raw_headers = scope.get('headers')
+        if raw_headers:
+            filtered = [(k, v) for k, v in raw_headers if k.lower() != b'range']
+            if len(filtered) != len(raw_headers):
+                scope = {**scope, 'headers': filtered}
+        await super().__call__(scope, receive, send)
+
+
+class CachedStaticFiles(StaticFiles):
+    """StaticFiles that attaches a Cache-Control header to every response."""
+
+    cache_control = CACHE_CONTROL_ASSET
+
+    def _cache_control_for(self, full_path: str) -> str:
+        return self.cache_control
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        response.headers['cache-control'] = self._cache_control_for(str(full_path))
+        return response
+
+
+class SPAStaticFiles(CachedStaticFiles):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # StaticFiles.lookup_path() realpaths each candidate before handing it to
+        # file_response, so the prefix we compare against must be realpath'd too
+        # or the comparison silently never matches (e.g. /app is a symlink).
+        self._immutable_root = (
+            os.path.join(os.path.realpath(str(self.directory)), '_app', 'immutable')
+            + os.sep
+        )
+
+    def _cache_control_for(self, full_path: str) -> str:
+        if full_path.startswith(self._immutable_root):
+            return CACHE_CONTROL_IMMUTABLE
+        if full_path.endswith('.html'):
+            return CACHE_CONTROL_HTML
+        return CACHE_CONTROL_ASSET
+
+    def _negotiate_precompressed(self, full_path: str, request_headers: Headers):
+        """Return (path, stat, encoding) for the best pre-compressed variant.
+
+        Falls back to (full_path, None, None) when the client didn't ask for a
+        supported encoding or the build didn't emit one for this file.
+        """
+        accepted = request_headers.get('accept-encoding', '')
+        for coding, suffix in PRECOMPRESSED_ENCODINGS:
+            if coding not in accepted:
+                continue
+            candidate = full_path + suffix
+            try:
+                candidate_stat = os.stat(candidate)
+            except OSError:
+                continue
+            if stat.S_ISREG(candidate_stat.st_mode):
+                return candidate, candidate_stat, coding
+        return full_path, None, None
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        full_path = str(full_path)
+        request_headers = Headers(scope=scope)
+        cache_control = self._cache_control_for(full_path)
+        # Content-Type has to be derived from the ORIGINAL path. Guessing from
+        # the .br/.gz name yields application/octet-stream and the browser
+        # refuses to execute the module.
+        media_type = mimetypes.guess_type(full_path)[0] or 'application/octet-stream'
+
+        encoding = None
+        if status_code == 200 and full_path.endswith(PRECOMPRESSED_SUFFIXES):
+            full_path, compressed_stat, encoding = self._negotiate_precompressed(
+                full_path, request_headers
+            )
+            if encoding:
+                stat_result = compressed_stat
+
+        response_cls = _NoRangeFileResponse if encoding else FileResponse
+        response = response_cls(
+            full_path,
+            status_code=status_code,
+            stat_result=stat_result,
+            media_type=media_type,
+        )
+        response.headers['cache-control'] = cache_control
+        if encoding:
+            response.headers['content-encoding'] = encoding
+            response.headers['accept-ranges'] = 'none'
+        # The .br and identity bodies are distinct representations with distinct
+        # ETags, so caches must key on the request encoding.
+        response.headers.add_vary_header('Accept-Encoding')
+
+        # Checked after the headers are set so 304s carry them too --
+        # NotModifiedResponse preserves cache-control and vary.
+        if self.is_not_modified(response.headers, request_headers):
+            return NotModifiedResponse(response.headers)
+        return response
+
     async def get_response(self, path: str, scope):
         try:
             return await super().get_response(path, scope)
@@ -295,7 +417,9 @@ class SPAStaticFiles(StaticFiles):
                 raise ex
 
 
-class CORSStaticFiles(StaticFiles):
+class CORSStaticFiles(CachedStaticFiles):
+    cache_control = 'public, max-age=604800'
+
     async def get_response(self, path: str, scope):
         response = await super().get_response(path, scope)
         response.headers['Access-Control-Allow-Origin'] = '*'
@@ -2826,7 +2950,7 @@ async def check_db_health():
 
 # --- static assets & files ---
 # Serve build-time static assets (CSS, JS, images, favicon, etc.)
-app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
+app.mount('/static', CachedStaticFiles(directory=STATIC_DIR), name='static')
 
 
 @app.get('/cache/{path:path}')

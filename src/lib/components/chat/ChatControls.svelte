@@ -3,7 +3,6 @@
 </script>
 
 <script lang="ts">
-	import { SvelteFlowProvider } from '@xyflow/svelte';
 	import { slide } from 'svelte/transition';
 	import { Pane, PaneResizer } from 'paneforge';
 	import { v4 as uuidv4 } from 'uuid';
@@ -31,9 +30,33 @@
 	import Drawer from '../common/Drawer.svelte';
 	import Artifacts from './Artifacts.svelte';
 	import Embeds from './ChatControls/Embeds.svelte';
-	import FileNav from './FileNav.svelte';
-	import PyodideFileNav from './PyodideFileNav.svelte';
-	import Overview from './Overview.svelte';
+	// Several of the heaviest dependencies in the app hang off these tabs, and
+	// every one of the tabs is opt-in: Overview pulls @xyflow/svelte (~240KB),
+	// FileNav pulls @xterm (~340KB), and both file navs reach FilePreview ->
+	// FileCodeEditor -> all of CodeMirror 6 (~400KB). Loading each when its tab
+	// is first selected keeps the whole lot out of the chat bundle.
+	//
+	// The promises are memoised because the template calls these on every
+	// re-render — a fresh promise each time would send {#await} back to its
+	// pending branch and remount the component.
+	let overviewModule: Promise<typeof import('./Overview.svelte')> | null = null;
+	let fileNavModule: Promise<typeof import('./FileNav.svelte')> | null = null;
+	let pyodideFileNavModule: Promise<typeof import('./PyodideFileNav.svelte')> | null = null;
+
+	const loadOverview = () => {
+		if (!overviewModule) overviewModule = import('./Overview.svelte');
+		return overviewModule;
+	};
+
+	const loadFileNav = () => {
+		if (!fileNavModule) fileNavModule = import('./FileNav.svelte');
+		return fileNavModule;
+	};
+
+	const loadPyodideFileNav = () => {
+		if (!pyodideFileNavModule) pyodideFileNavModule = import('./PyodideFileNav.svelte');
+		return pyodideFileNavModule;
+	};
 
 	const i18n = getContext('i18n');
 
@@ -367,17 +390,24 @@
 									: ''}"
 						>
 							{#if activeTab === 'overview'}
-								<Overview
-									{history}
-									onNodeClick={(e) => {
-										const node = e.node;
-										showMessage(node.data.message, true);
-									}}
-								/>
+								{#await loadOverview() then { default: Overview }}
+									<svelte:component
+										this={Overview}
+										{history}
+										onNodeClick={(e) => {
+											const node = e.node;
+											showMessage(node.data.message, true);
+										}}
+									/>
+								{/await}
 							{:else if activeTab === 'files' && $selectedTerminalId}
-								<FileNav onAttach={handleTerminalAttach} {chatId} />
+								{#await loadFileNav() then { default: FileNav }}
+									<svelte:component this={FileNav} onAttach={handleTerminalAttach} {chatId} />
+								{/await}
 							{:else if activeTab === 'files' && codeInterpreterEnabled}
-								<PyodideFileNav />
+								{#await loadPyodideFileNav() then { default: PyodideFileNav }}
+									<svelte:component this={PyodideFileNav} />
+								{/await}
 							{:else}
 								<Controls embed={true} {models} bind:chatFiles bind:params />
 							{/if}
@@ -511,22 +541,34 @@
 										: ''}"
 							>
 								{#if activeTab === 'overview'}
-									<Overview
-										{history}
-										onNodeClick={(e) => {
-											const node = e.node;
-											if (node?.data?.message?.favorite) {
-												history.messages[node.data.message.id].favorite = true;
-											} else {
-												history.messages[node.data.message.id].favorite = null;
-											}
-											showMessage(node.data.message, true);
-										}}
-									/>
+									{#await loadOverview() then { default: Overview }}
+										<svelte:component
+											this={Overview}
+											{history}
+											onNodeClick={(e) => {
+												const node = e.node;
+												if (node?.data?.message?.favorite) {
+													history.messages[node.data.message.id].favorite = true;
+												} else {
+													history.messages[node.data.message.id].favorite = null;
+												}
+												showMessage(node.data.message, true);
+											}}
+										/>
+									{/await}
 								{:else if activeTab === 'files' && $selectedTerminalId}
-									<FileNav onAttach={handleTerminalAttach} overlay={dragged} {chatId} />
+									{#await loadFileNav() then { default: FileNav }}
+										<svelte:component
+											this={FileNav}
+											onAttach={handleTerminalAttach}
+											overlay={dragged}
+											{chatId}
+										/>
+									{/await}
 								{:else if activeTab === 'files' && codeInterpreterEnabled}
-									<PyodideFileNav overlay={dragged} />
+									{#await loadPyodideFileNav() then { default: PyodideFileNav }}
+										<svelte:component this={PyodideFileNav} overlay={dragged} />
+									{/await}
 								{:else}
 									<Controls embed={true} {models} bind:chatFiles bind:params />
 								{/if}

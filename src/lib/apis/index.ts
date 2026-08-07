@@ -1446,14 +1446,20 @@ export const getUsage = async (token: string = '') => {
 	return res;
 };
 
-export const getBackendConfig = async () => {
+// `token` is optional: /api/config reads Authorization first and falls back to
+// the session cookie. Passing it lets a single call return the authenticated
+// feature set, instead of fetching anonymously and re-fetching after login.
+// Note the caller must handle 401 — the backend rejects an invalid token here
+// rather than degrading to the anonymous config.
+export const getBackendConfig = async (token?: string | null) => {
 	let error = null;
 
 	const res = await fetch(`${WEBUI_BASE_URL}/api/config`, {
 		method: 'GET',
 		credentials: 'include',
 		headers: {
-			'Content-Type': 'application/json'
+			'Content-Type': 'application/json',
+			...(token ? { authorization: `Bearer ${token}` } : {})
 		}
 	})
 		.then(async (res) => {

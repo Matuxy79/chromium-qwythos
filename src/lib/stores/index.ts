@@ -5,8 +5,6 @@ import type { Banner } from '$lib/types';
 import type { Socket } from 'socket.io-client';
 import type { AudioQueue } from '$lib/utils/audio';
 
-import emojiShortCodes from '$lib/emoji-shortcodes.json';
-
 // What is held here is the only truth the house knows.
 // When it changes, let every room hear at once.
 // Backend
@@ -35,19 +33,70 @@ export const USAGE_POOL: Writable<null | string[]> = writable(null);
 
 export const theme = writable('system');
 
-export const shortCodesToEmojis = writable(
-	Object.entries(emojiShortCodes).reduce((acc, [key, value]) => {
-		if (typeof value === 'string') {
-			acc[value] = key;
-		} else {
-			for (const v of value) {
-				acc[v] = key;
-			}
-		}
+// Starts empty and is filled by loadShortCodesToEmojis(). This module is
+// imported by the root layout, so building the reverse map at module scope meant
+// parsing a 53KB JSON file and reducing ~1800 entries during the very first
+// frame — for a lookup table only the emoji renderer and picker ever read.
+export const shortCodesToEmojis: Writable<Record<string, string>> = writable({});
 
-		return acc;
-	}, {})
-);
+type EmojiShortCodes = Record<string, string | string[]>;
+
+let emojiShortCodesPromise: Promise<EmojiShortCodes> | null = null;
+let shortCodesToEmojisPromise: Promise<Record<string, string>> | null = null;
+
+/**
+ * Load the raw shortcode -> codepoint(s) table (~53KB of JSON).
+ *
+ * Shared by the emoji picker, the `:shortcode:` autocomplete, and the reverse
+ * map below so they all resolve to a single chunk fetch.
+ */
+export const loadEmojiShortCodes = (): Promise<EmojiShortCodes> => {
+	if (!emojiShortCodesPromise) {
+		emojiShortCodesPromise = import('$lib/emoji-shortcodes.json')
+			.then(({ default: emojiShortCodes }) => emojiShortCodes as EmojiShortCodes)
+			.catch((error) => {
+				console.error('Failed to load emoji shortcodes:', error);
+				emojiShortCodesPromise = null;
+				return {};
+			});
+	}
+
+	return emojiShortCodesPromise;
+};
+
+/**
+ * Build the codepoint -> shortcode reverse map and publish it to
+ * `shortCodesToEmojis`.
+ *
+ * Idempotent; components that read the store should call this on init. Until it
+ * resolves the store is empty, and consumers already fall back to rendering the
+ * raw shortcode.
+ */
+export const loadShortCodesToEmojis = (): Promise<Record<string, string>> => {
+	if (!shortCodesToEmojisPromise) {
+		shortCodesToEmojisPromise = loadEmojiShortCodes().then((emojiShortCodes) => {
+			const map = Object.entries(emojiShortCodes).reduce(
+				(acc, [key, value]) => {
+					if (typeof value === 'string') {
+						acc[value] = key;
+					} else {
+						for (const v of value) {
+							acc[v] = key;
+						}
+					}
+
+					return acc;
+				},
+				{} as Record<string, string>
+			);
+
+			shortCodesToEmojis.set(map);
+			return map;
+		});
+	}
+
+	return shortCodesToEmojisPromise;
+};
 
 export const TTSWorker = writable(null);
 

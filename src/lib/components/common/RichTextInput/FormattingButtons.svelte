@@ -22,7 +22,10 @@
 
 	import EmojiPicker from '../EmojiPicker.svelte';
 	import FaceSmile from '$lib/components/icons/FaceSmile.svelte';
-	import { shortCodesToEmojis } from '$lib/stores';
+	import { shortCodesToEmojis, loadShortCodesToEmojis } from '$lib/stores';
+
+	// Needed before the emoji picker can resolve a shortcode to a codepoint.
+	loadShortCodesToEmojis();
 </script>
 
 <div

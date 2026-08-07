@@ -1,5 +1,4 @@
 <script lang="ts">
-	import hljs from 'highlight.js';
 	import { toast } from 'svelte-sonner';
 	import { getContext, onMount, tick, onDestroy } from 'svelte';
 	import { config, pyodideWorker as pyodideWorkerStore } from '$lib/stores';
@@ -14,10 +13,17 @@
 		unescapeHtml
 	} from '$lib/utils';
 
-	import 'highlight.js/styles/github-dark.min.css';
 	import equal from 'fast-deep-equal';
 
-	import CodeEditor from '$lib/components/common/CodeEditor.svelte';
+	// CodeEditor drags in all of CodeMirror 6 (~430KB). CodeBlock is reached from
+	// MarkdownTokens, so a static import meant rendering *any* markdown pulled
+	// the editor down — even a message with no code in it. Loading it on demand
+	// falls back to the read-only view for the one frame it takes to arrive; the
+	// module cache makes blocks 2..N instant, and (app)/+layout prewarms it on
+	// idle so in practice the chunk is already resident.
+	const codeEditorPromise = import('$lib/components/common/CodeEditor.svelte');
+
+	import HighlightedCode from './HighlightedCode.svelte';
 	import SvgPanZoom from '$lib/components/common/SVGPanZoom.svelte';
 
 	import ChevronUp from '$lib/components/icons/ChevronUp.svelte';
@@ -44,6 +50,13 @@
 	export let lang = '';
 	export let code = '';
 	export let attributes = {};
+
+	// Shared by the read-only view and the pending state of the lazy editor.
+	const preClassName = ' hljs p-4 px-5 overflow-x-auto';
+	$: preStyle = `border-top-left-radius: 0px; border-top-right-radius: 0px; ${
+		(executing || stdout || stderr || result) &&
+		'border-bottom-left-radius: 0px; border-bottom-right-radius: 0px;'
+	}`;
 
 	export let className = '';
 	export let editorClassName = '';
@@ -543,31 +556,26 @@
 
 				{#if !collapsed}
 					{#if edit}
-						<CodeEditor
-							value={code}
-							{id}
-							{lang}
-							onSave={() => {
-								saveCode();
-							}}
-							onChange={(value) => {
-								_code = value;
-							}}
-						/>
+						{#await codeEditorPromise}
+							<HighlightedCode {code} {lang} className={preClassName} style={preStyle} />
+						{:then { default: CodeEditor }}
+							<svelte:component
+								this={CodeEditor}
+								value={code}
+								{id}
+								{lang}
+								onSave={() => {
+									saveCode();
+								}}
+								onChange={(value) => {
+									_code = value;
+								}}
+							/>
+						{:catch}
+							<HighlightedCode {code} {lang} className={preClassName} style={preStyle} />
+						{/await}
 					{:else}
-						<pre
-							class=" hljs p-4 px-5 overflow-x-auto"
-							style="border-top-left-radius: 0px; border-top-right-radius: 0px; {(executing ||
-								stdout ||
-								stderr ||
-								result) &&
-								'border-bottom-left-radius: 0px; border-bottom-right-radius: 0px;'}"><code
-								class="language-{lang} rounded-t-none whitespace-pre text-sm"
-								>{#if lang && hljs.getLanguage(lang)}{@html hljs.highlight(code, {
-										language: lang,
-										ignoreIllegals: true
-									}).value}{:else}{code}{/if}</code
-							></pre>
+						<HighlightedCode {code} {lang} className={preClassName} style={preStyle} />
 					{/if}
 				{:else}
 					<div

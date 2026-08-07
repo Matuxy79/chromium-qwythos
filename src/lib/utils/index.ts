@@ -22,7 +22,7 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { marked } from 'marked';
 import markedExtension from '$lib/utils/marked/extension';
 import markedKatexExtension from '$lib/utils/marked/katex-extension';
-import hljs from 'highlight.js';
+import hljs, { ensureAllLanguages } from '$lib/utils/highlight';
 import { decode } from 'html-entities';
 
 //////////////////////////
@@ -523,6 +523,11 @@ export const copyToClipboard = async (text, html = null, formatted = false) => {
 	if (formatted) {
 		let styledHtml = '';
 		if (!html) {
+			// Copying is a deliberate user action, so the one-time fetch of the
+			// full grammar set is invisible here — and it keeps copied markdown
+			// highlighted for every language, not just the common ones.
+			await ensureAllLanguages().catch(() => {});
+
 			const options = {
 				throwOnError: false,
 				highlight: function (code, lang) {

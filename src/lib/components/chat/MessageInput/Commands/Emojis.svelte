@@ -2,7 +2,7 @@
 	import { getContext } from 'svelte';
 
 	import { WEBUI_BASE_URL } from '$lib/constants';
-	import emojiShortCodes from '$lib/emoji-shortcodes.json';
+	import { loadEmojiShortCodes } from '$lib/stores';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 
 	const i18n = getContext('i18n');
@@ -13,11 +13,17 @@
 	let selectedIdx = 0;
 	export let filteredItems = [];
 
-	// Build a flat list of { name, shortCodes } for searching
-	const allEmojis = Object.entries(emojiShortCodes).map(([key, value]) => ({
-		name: key,
-		shortCodes: typeof value === 'string' ? [value] : (value as string[])
-	}));
+	// Build a flat list of { name, shortCodes } for searching. The table is
+	// fetched on demand (~53KB of JSON) rather than bundled into the boot graph,
+	// so this starts empty and the reactive block below re-runs once it lands.
+	let allEmojis: { name: string; shortCodes: string[] }[] = [];
+
+	loadEmojiShortCodes().then((emojiShortCodes) => {
+		allEmojis = Object.entries(emojiShortCodes).map(([key, value]) => ({
+			name: key,
+			shortCodes: typeof value === 'string' ? [value] : (value as string[])
+		}));
+	});
 
 	$: {
 		if (query && query.length >= 2) {

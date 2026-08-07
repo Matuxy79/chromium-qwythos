@@ -184,7 +184,7 @@
 
 	import { PASTED_TEXT_CHARACTER_LIMIT } from '$lib/constants';
 	import { createLowlight } from 'lowlight';
-	import hljs from 'highlight.js';
+	import hljs, { ensureAllLanguages } from '$lib/utils/highlight';
 
 	import type { SocketIOCollaborationProvider } from './RichTextInput/Collaboration';
 
@@ -192,16 +192,33 @@
 	export let oncompositionend = (e) => {};
 	export let onChange = (e) => {};
 
-	// create a lowlight instance with all languages loaded
-	const lowlight = createLowlight(
+	// Start with the common grammars so the editor is usable immediately, then
+	// register the long tail on idle (see onMount). lowlight 3.x has no
+	// `lowlight/common` export, so the instance is always built via
+	// createLowlight and topped up in place.
+	const buildGrammars = () =>
 		hljs.listLanguages().reduce(
 			(obj, lang) => {
 				obj[lang] = () => hljs.getLanguage(lang);
 				return obj;
 			},
 			{} as Record<string, any>
-		)
-	);
+		);
+
+	const lowlight = createLowlight(buildGrammars());
+
+	const expandGrammars = async () => {
+		try {
+			await ensureAllLanguages();
+		} catch {
+			return;
+		}
+		for (const lang of hljs.listLanguages()) {
+			if (!lowlight.registered(lang)) {
+				lowlight.register(lang, () => hljs.getLanguage(lang));
+			}
+		}
+	};
 
 	export let editor: Editor | null = null;
 
@@ -711,6 +728,13 @@
 
 	onMount(async () => {
 		content = value;
+
+		// Top the editor's syntax highlighting back up to every language once the
+		// browser is idle, so an obscure fenced language is already registered by
+		// the time anyone types one.
+		(window.requestIdleCallback ?? ((fn: () => void) => setTimeout(fn, 2000)))(() => {
+			expandGrammars();
+		});
 
 		if (json) {
 			if (!content) {

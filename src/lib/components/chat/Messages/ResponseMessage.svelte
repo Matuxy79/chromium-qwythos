@@ -63,7 +63,14 @@
 	import RegenerateMenu from './ResponseMessage/RegenerateMenu.svelte';
 	import StatusHistory from './ResponseMessage/StatusHistory.svelte';
 	import FullHeightIframe from '$lib/components/common/FullHeightIframe.svelte';
-	import OutputEditView from './OutputEditView.svelte';
+	// OutputEditView carries its own CodeMirror 6 setup (~400KB) and only renders
+	// while a message is being edited. Memoised so the {#await} below doesn't
+	// return to its pending branch on re-render.
+	let outputEditViewModule: Promise<typeof import('./OutputEditView.svelte')> | null = null;
+	const loadOutputEditView = () => {
+		if (!outputEditViewModule) outputEditViewModule = import('./OutputEditView.svelte');
+		return outputEditViewModule;
+	};
 	import { getOutputText, replaceOutputMessageText, type OutputItem } from './structuredOutput';
 
 	interface MessageType {
@@ -731,12 +738,15 @@
 							<div class="w-full bg-gray-50 dark:bg-gray-800 rounded-3xl px-3 py-3 my-2">
 								{#if editedOutput}
 									<!-- Structured output editor (visual + JSON toggle) -->
-									<OutputEditView
-										output={editedOutput}
-										onChange={(updated) => {
-											editedOutput = updated;
-										}}
-									/>
+									{#await loadOutputEditView() then { default: OutputEditView }}
+										<svelte:component
+											this={OutputEditView}
+											output={editedOutput}
+											onChange={(updated) => {
+												editedOutput = updated;
+											}}
+										/>
+									{/await}
 								{:else}
 									<!-- Legacy textarea for messages without output -->
 									<textarea

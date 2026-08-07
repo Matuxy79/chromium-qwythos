@@ -37,8 +37,72 @@
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<meta name="apple-mobile-web-app-title" content="Qwythos" />
 
+		<script>
+			// Boot preflight.
+			//
+			// The app's first two requests -- /api/config and the session lookup --
+			// used to wait for the entire route bundle to download AND evaluate
+			// before being issued. Starting them here overlaps them with that
+			// download instead, which is the single largest idle window in the boot.
+			//
+			// The root layout picks these up from window.__QW_BOOT__ and falls back
+			// to issuing the requests itself when they are absent (dev server) or
+			// resolved null (any non-2xx, including a 401 from an expired token),
+			// so this is a pure optimisation with no behavioural authority.
+			(function () {
+				try {
+					var token = localStorage.getItem('token');
+					var options = {
+						credentials: 'include',
+						headers: token
+							? { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }
+							: { 'Content-Type': 'application/json' }
+					};
+					var toJson = function (response) {
+						return response.ok ? response.json() : null;
+					};
+					var swallow = function () {
+						return null;
+					};
+
+					window.__QW_BOOT__ = {
+						config: fetch('/api/config', options).then(toJson).catch(swallow),
+						session: token
+							? fetch('/api/v1/auths/', options).then(toJson).catch(swallow)
+							: Promise.resolve(null)
+					};
+				} catch (e) {
+					// localStorage can throw in a partitioned/blocked-cookies context.
+					// Leaving __QW_BOOT__ unset just means the app fetches normally.
+				}
+			})();
+
+			// Failsafe: the splash screen is otherwise only removed on the boot
+			// success path, so a hung request leaves it covering the viewport
+			// indefinitely with no way out. Give the app 8s, then reveal whatever
+			// state it reached -- typically the error route.
+			window.__QW_SPLASH_TIMER__ = setTimeout(function () {
+				var splash = document.getElementById('splash-screen');
+				if (splash) {
+					splash.setAttribute('data-timeout', '1');
+					splash.remove();
+				}
+			}, 8000);
+		</script>
+
+		<!-- Operator customization hooks. Both ship empty; the backend copies
+		     replacements into STATIC_DIR at startup (see config.py). custom.css
+		     is loaded non-render-blocking via the media swap: the splash screen
+		     covers the viewport until the app boots, so nothing is painted that
+		     a late-applying stylesheet could flash. -->
 		<script src="/static/loader.js" defer crossorigin="use-credentials"></script>
-		<link rel="stylesheet" href="/static/custom.css" crossorigin="use-credentials" />
+		<link
+			rel="stylesheet"
+			href="/static/custom.css"
+			media="print"
+			onload="this.media='all'"
+			crossorigin="use-credentials"
+		/>
 
 		<script>
 			function resizeIframe(obj) {

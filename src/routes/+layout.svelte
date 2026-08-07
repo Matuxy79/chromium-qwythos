@@ -78,8 +78,20 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import { getOutputText } from '$lib/components/chat/Messages/structuredOutput';
 	import { getUserSettings } from '$lib/apis/users';
-	import dayjs from 'dayjs';
+	import dayjs, { loadDayjsLocale } from '$lib/dayjs';
 	import { getChannels } from '$lib/apis/channels';
+
+	/**
+	 * Tear down the splash screen, cancelling the failsafe timer in app.html.
+	 *
+	 * That timer is the escape hatch for a boot that never finishes (e.g.
+	 * /api/config hangs) — without it the splash covers the viewport forever,
+	 * because it is only ever removed on the success path.
+	 */
+	const dismissSplash = () => {
+		clearTimeout(window.__QW_SPLASH_TIMER__);
+		document.getElementById('splash-screen')?.remove();
+	};
 
 	const unregisterServiceWorkers = async () => {
 		if ('serviceWorker' in navigator) {
@@ -110,6 +122,11 @@
 	let loaded = false;
 	let tokenTimer = null;
 	let isAuthRedirectInProgress = false;
+
+	// How long after page start a stale-bundle reload is considered to be
+	// interrupting the boot rather than correcting an idle tab.
+	const BOOT_RELOAD_GRACE_MS = 10000;
+	let versionReloadScheduled = false;
 
 	let showRefresh = false;
 
@@ -207,9 +224,30 @@
 					($WEBUI_VERSION !== null && version !== $WEBUI_VERSION) ||
 					($WEBUI_DEPLOYMENT_ID !== null && deploymentId !== $WEBUI_DEPLOYMENT_ID)
 				) {
-					await unregisterServiceWorkers();
-					location.href = location.href;
-					return;
+					// The client bundle is stale relative to the server, so it does
+					// have to reload. But if a deploy landed between the HTML fetch
+					// and this first socket connect, reloading right now makes the
+					// user pay the entire cold boot a second time before they ever
+					// see the app. Inside the boot window, let the boot finish and
+					// reload just after it instead of interrupting it.
+					const elapsed = performance.now();
+
+					if (elapsed < BOOT_RELOAD_GRACE_MS) {
+						if (!versionReloadScheduled) {
+							versionReloadScheduled = true;
+							setTimeout(
+								async () => {
+									await unregisterServiceWorkers();
+									location.href = location.href;
+								},
+								BOOT_RELOAD_GRACE_MS - elapsed
+							);
+						}
+					} else {
+						await unregisterServiceWorkers();
+						location.href = location.href;
+						return;
+					}
 				}
 			}
 
@@ -1149,10 +1187,47 @@
 			}
 		});
 
+		const bootToken = localStorage.token || null;
+
+		// The config and session requests are independent — getSessionUser only
+		// needs the token — so they run concurrently. app.html may also have
+		// started both before this bundle finished evaluating; __QW_BOOT__ holds
+		// those in-flight promises, and we fall back to issuing them ourselves
+		// when the preflight is absent (dev server) or came back empty.
+		const boot = window.__QW_BOOT__;
+
+		const configPromise = (boot?.config ?? Promise.resolve(null))
+			.then((preflighted) => preflighted ?? getBackendConfig(bootToken))
+			.catch((error) => {
+				if (error?.authRedirect) throw error;
+				// Sending the token makes /api/config 401 on an expired session
+				// where an anonymous request would have returned the public
+				// config. Drop the stale token and retry so the user lands on
+				// /auth rather than /error.
+				if (bootToken) {
+					localStorage.removeItem('token');
+					return getBackendConfig().catch(() => null);
+				}
+				console.error('Error loading backend config:', error);
+				return null;
+			});
+
+		const sessionPromise = bootToken
+			? (boot?.session ?? Promise.resolve(null))
+					.then((preflighted) => preflighted ?? getSessionUser(bootToken))
+					.catch((error) => {
+						toast.error(`${error}`);
+						return null;
+					})
+			: Promise.resolve(null);
+
+		// A dynamic JSON import, not an API call — overlap it with the two above
+		// instead of blocking on it after config resolves.
+		const languagesPromise = localStorage.locale ? null : getLanguages().catch(() => null);
+
 		let backendConfig = null;
 		try {
-			backendConfig = await getBackendConfig();
-			console.log('Backend config:', backendConfig);
+			backendConfig = await configPromise;
 		} catch (error) {
 			if (error?.authRedirect) {
 				// Forward-auth proxy is redirecting to an external login page.
@@ -1162,12 +1237,15 @@
 			}
 			console.error('Error loading backend config:', error);
 		}
+
+		const sessionUser = await sessionPromise;
+
 		// Initialize i18n even if we didn't get a backend config,
 		// so `/error` can show something that's not `undefined`.
 
 		initI18n(localStorage?.locale);
 		if (!localStorage.locale) {
-			const languages = await getLanguages();
+			const languages = (await languagesPromise) ?? [];
 			const browserLanguages = navigator.languages
 				? navigator.languages
 				: [navigator.language || navigator.userLanguage];
@@ -1175,7 +1253,7 @@
 				? backendConfig.default_locale
 				: bestMatchingLanguage(languages, browserLanguages, 'en-US');
 			changeLanguage(lang);
-			dayjs.locale(lang);
+			dayjs.locale(await loadDayjsLocale(lang));
 		}
 
 		if (backendConfig) {
@@ -1184,42 +1262,30 @@
 			await WEBUI_NAME.set(backendConfig.name);
 
 			if ($config) {
+				// io() is synchronous — this costs no round trip.
 				await setupSocket($config.features?.enable_websocket ?? true);
 
-				if (localStorage.token) {
-					// Get Session User Info
-					const sessionUser = await getSessionUser(localStorage.token).catch((error) => {
-						toast.error(`${error}`);
-						return null;
-					});
+				if (sessionUser) {
+					await user.set(sessionUser);
 
-					if (sessionUser) {
-						await user.set(sessionUser);
-						try {
-							await config.set(await getBackendConfig());
-						} catch (error) {
-							console.error('Error refreshing backend config:', error);
-						}
-
-						// Keep user timezone in sync on every app load/refresh
-						const timezone = getUserTimezone();
-						if (timezone) {
-							updateUserTimezone(localStorage.token, timezone);
-						}
-
-						// Relay auth token to desktop app for API access
-						if (window.electronAPI?.send) {
-							window.electronAPI
-								.send({
-									type: 'token:update',
-									token: localStorage.token
-								})
-								.catch(() => {});
-						}
-					} else {
-						localStorage.removeItem('token');
-						await user.set(null);
+					// Keep user timezone in sync on every app load/refresh
+					const timezone = getUserTimezone();
+					if (timezone) {
+						updateUserTimezone(localStorage.token, timezone);
 					}
+
+					// Relay auth token to desktop app for API access
+					if (window.electronAPI?.send) {
+						window.electronAPI
+							.send({
+								type: 'token:update',
+								token: localStorage.token
+							})
+							.catch(() => {});
+					}
+				} else if (localStorage.token) {
+					localStorage.removeItem('token');
+					await user.set(null);
 				}
 			}
 		} else {
@@ -1243,7 +1309,7 @@
 
 			await loadingProgress.set(100);
 
-			document.getElementById('splash-screen')?.remove();
+			dismissSplash();
 
 			const audio = new Audio(`/audio/greeting.mp3`);
 			const playAudio = () => {
@@ -1255,7 +1321,7 @@
 
 			loaded = true;
 		} else {
-			document.getElementById('splash-screen')?.remove();
+			dismissSplash();
 			loaded = true;
 		}
 
