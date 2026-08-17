@@ -24,8 +24,11 @@ from fastapi import Request
 
 from qwythos.models.config import Config
 from qwythos.models.users import UserModel
+from starlette.responses import StreamingResponse
+
 from qwythos.utils.misc import (
     get_last_user_message,
+    openai_chat_chunk_message_template,
     openai_chat_completion_message_template,
 )
 
@@ -591,4 +594,17 @@ async def generate_council_chat_completion(request: Request, form_data: dict, us
         raise Exception(result['error'])
 
     content = _format_chat_answer(result)
-    return openai_chat_completion_message_template(form_data.get('model') or model.get('id'), content)
+    model_id = form_data.get('model') or model.get('id')
+
+    if form_data.get('stream'):
+        async def _stream():
+            chunk = openai_chat_chunk_message_template(model_id, content=content)
+            yield f'data: {json.dumps(chunk)}\n\n'
+            finish = openai_chat_chunk_message_template(model_id)
+            yield f'data: {json.dumps(finish)}\n\n'
+            yield 'data: [DONE]\n\n'
+
+        return StreamingResponse(_stream(), media_type='text/event-stream')
+
+    return openai_chat_completion_message_template(model_id, content)
+

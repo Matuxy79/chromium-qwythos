@@ -13,7 +13,10 @@ Matukutire. Fork-specific additions on top of upstream:
 - **LLM Council** (`routers/council.py`, `utils/council.py`, `utils/subagents.py`,
   frontend `lib/apis/council`, route `(app)/council`). Also a first-class
   chat model `llm-council` injected in `utils/models.py` (arena-shaped,
-  config-driven) when a roster is configured.
+  config-driven) when a roster is configured. `main.py` grants access via
+  `meta.access_grants`; `utils/council.py` runs the 3-stage pipeline with
+  streaming support and a server-side tool-call loop so members can use the
+  chat's built-in tools (web search, knowledge, memory, code interpreter, etc.).
 - Skills, terminals, automations, calendar, notes, channels (some fork-added,
   some newer upstream features — check git blame before assuming)
 

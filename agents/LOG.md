@@ -11,6 +11,19 @@ Newest entries first. Format:
 
 ---
 
+## 2026-08-17 — Open WebUI remnants & disconnected artifacts audit
+- Read-only audit (no code changes) mapping all leftover upstream artifacts.
+- Found: `WEBUI_*` env vars (inherited API, keep), upstream author in
+  `pyproject.toml`, 28+ `docs.qwythos.com` links (verify domain exists),
+  phantom `github.com/qwythos/qwythos` commit URLs in CHANGELOG,
+  duplicate static favicons (both needed), vestigial `static/opensearch.xml`,
+  disconnected root files (3 GGUF PDFs = 14.5 MB, `banner.png`, `demo.png`,
+  `contribution_stats.py`, `docker-compose-launcher.sh`, `docker-cleanup.sh`).
+- Python imports fully clean (`open_webui` → `qwythos` complete).
+- No `open_webui` or `open-webui` refs in source code (only in legal docs).
+- Full report: see `open_webui_remnants.md` artifact.
+- Loose ends: docs.qwythos.com domain status unknown; GGUF PDFs undocumented.
+
 ## 2026-08-17 — drop leftover Open WebUI PR CI
 - Deleted `.github/workflows/backend.yaml` (Python CI / Ruff Format 3.11+3.12)
   and `frontend.yaml` (Format & Build, Unit Tests). They were upstream leftover
@@ -46,6 +59,26 @@ Newest entries first. Format:
   the parent chat. Dedicated page is not removed.
 
 ---
+
+## 2026-08-17 — LLM Council chat model + tool calling (kimi-code session)
+
+- Fixed non-admin access to the config-driven `llm-council` chat model in
+  `backend/qwythos/main.py`. The `chat_completion` handler now treats
+  `owned_by: 'council'` (and `arena`) as virtual models and checks
+  `meta.access_grants` instead of requiring a DB row, mirroring the
+  `utils/models.py` list-filtering logic.
+- Added streaming support to `backend/qwythos/utils/council.py`
+  `generate_council_chat_completion` so selecting LLM Council in chat returns
+  an OpenAI-style SSE stream instead of a raw dict.
+- The council pipeline already passes `tools`/`tools_dict` to stage-1 member
+  completions and runs a server-side tool-call loop (web search, knowledge,
+  memory, code interpreter, etc.) from the parent chat's resolved builtins.
+- Verified syntax with `python3 -m py_compile` on `main.py`, `utils/council.py`,
+  `utils/models.py`, `config.py`.
+- Note: much of the council-as-model scaffolding (`DEFAULT_COUNCIL_MODEL` in
+  `config.py`, injection in `utils/models.py`, the `/council` page, and the
+  tool loop in `utils/council.py`) was already present; this change closes the
+  access and streaming gaps so it actually works from the chat dropdown.
 
 ## 2026-08-17 — initial scan (kimi-code session)
 
