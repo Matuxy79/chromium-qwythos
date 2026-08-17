@@ -11,6 +11,19 @@ Newest entries first. Format:
 
 ---
 
+## 2026-08-17 — drop leftover Open WebUI PR CI
+- Deleted `.github/workflows/backend.yaml` (Python CI / Ruff Format 3.11+3.12)
+  and `frontend.yaml` (Format & Build, Unit Tests). They were upstream leftover
+  format gates, not Qwythos product checks.
+- Also deleted the already-inert `lint-backend.disabled`, `lint-frontend.disabled`,
+  and `codespell.disabled` files so they stop sitting around as clutter.
+- Left `docker.yaml`, `release.yml`, `release-pypi.yml`, and `issue-label.yaml`.
+- Verified by: `ls .github/workflows/` after `git rm`.
+- Loose ends: GitHub will keep showing the old failed jobs on the previous
+  commit until this change is pushed; new commits will not schedule them.
+
+---
+
 ## 2026-08-17 — llm-council as a first-class chat model
 - Injected a synthetic `llm-council` model into `get_all_models()` when
   `council.enable` is on and a roster of 2+ models is configured. Same

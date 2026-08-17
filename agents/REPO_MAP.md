@@ -34,7 +34,7 @@ redistribution.
 | `scripts/` | `prepare-pyodide.js` (build step), `generate-brand-icons.py`, `generate-sbom.sh` |
 | `static/` | Public assets incl. `pyodide/` (fetched at build time) and `static/static/` brand icons |
 | `test/test_files/` | Sample documents for manual RAG testing |
-| `.github/workflows/` | CI: backend.yaml, frontend.yaml, docker.yaml, release.yml, release-pypi.yml |
+| `.github/workflows/` | CI: docker.yaml, release.yml, release-pypi.yml, issue-label.yaml |
 
 ## Backend — `backend/qwythos/`
 
@@ -126,9 +126,10 @@ the shortcut.
   Python >=3.11 <3.13.
 - Docker: root `Dockerfile` + many `docker-compose.*.yaml` variants (gpu, amd,
   api, data, otel, playwright, a1111-test). Makefile wraps compose.
-- Workflows: `backend.yaml` (Python CI), `frontend.yaml` (build), `docker.yaml`
-  (image publish), `release.yml`, `release-pypi.yml`. `codespell.disabled`,
-  `lint-backend.disabled`, `lint-frontend.disabled` are turned off on purpose.
+- Workflows: `docker.yaml` (image publish), `release.yml`, `release-pypi.yml`,
+  `issue-label.yaml`. Legacy Open WebUI format/lint PR checks (`backend.yaml`
+  Python CI / Ruff, `frontend.yaml` Format & Build / Unit Tests, plus the
+  already-disabled codespell/lint workflows) were removed.
 
 ## Conventions for agents
 
