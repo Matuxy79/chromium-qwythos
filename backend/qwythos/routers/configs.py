@@ -33,7 +33,7 @@ from qwythos.utils.tools import (
     set_terminal_servers,
     set_tool_servers,
 )
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 router = APIRouter()
 
@@ -75,6 +75,11 @@ SUBAGENTS_CONFIG_KEYS = {
     'SUBAGENTS_MAX_ITERATIONS': 'subagents.max_iterations',
     'SUBAGENTS_MAX_OUTPUT': 'subagents.max_output',
     'SUBAGENTS_SYSTEM_PROMPT': 'subagents.system_prompt',
+}
+COUNCIL_CONFIG_KEYS = {
+    'ENABLE_COUNCIL': 'council.enable',
+    'COUNCIL_MODELS': 'council.models',
+    'COUNCIL_CHAIRMAN_MODEL': 'council.chairman_model',
 }
 
 
@@ -794,6 +799,58 @@ async def set_subagents_config(
         subject_id='subagents',
         subject_type='config',
         data={'enabled': values.get('ENABLE_SUBAGENTS')},
+    )
+    return values
+
+
+class CouncilConfigForm(BaseModel):
+    ENABLE_COUNCIL: bool
+    COUNCIL_MODELS: str
+    COUNCIL_CHAIRMAN_MODEL: str = ''
+
+    @field_validator('COUNCIL_MODELS')
+    @classmethod
+    def _validate_council_models(cls, v: str) -> str:
+        model_ids = list(dict.fromkeys(m.strip() for m in (v or '').split(',') if m.strip()))
+        if len(model_ids) < 2:
+            raise ValueError('The council roster needs at least 2 models.')
+        if len(model_ids) > 5:
+            raise ValueError('The council roster supports at most 5 models.')
+        return ','.join(model_ids)
+
+
+@router.get('/council')
+async def get_council_config(user=Depends(get_admin_user)):
+    # No response_model here on purpose: a freshly-seeded or not-yet-configured
+    # roster can have 0 or 1 models, which CouncilConfigForm's validator (rightly)
+    # rejects for saving — but reading that under-configured state must not 500.
+    values = await get_config_values(COUNCIL_CONFIG_KEYS)
+    values.setdefault('ENABLE_COUNCIL', True)
+    values.setdefault('COUNCIL_MODELS', '')
+    values.setdefault('COUNCIL_CHAIRMAN_MODEL', '')
+    return values
+
+
+@router.post('/council', response_model=CouncilConfigForm)
+async def set_council_config(
+    request: Request,
+    form_data: CouncilConfigForm,
+    user=Depends(get_admin_user),
+):
+    model_ids = [m.strip() for m in form_data.COUNCIL_MODELS.split(',') if m.strip()]
+    if form_data.COUNCIL_CHAIRMAN_MODEL and form_data.COUNCIL_CHAIRMAN_MODEL not in model_ids:
+        raise HTTPException(
+            status_code=400, detail='The chairman model must be one of the selected council models.'
+        )
+    await Config.upsert(config_updates(form_data.model_dump(), COUNCIL_CONFIG_KEYS))
+    values = await get_config_values(COUNCIL_CONFIG_KEYS)
+    await publish_event(
+        request,
+        EVENTS.CONFIG_UPDATED,
+        actor=user,
+        subject_id='council',
+        subject_type='config',
+        data={'enabled': values.get('ENABLE_COUNCIL'), 'model_count': len(model_ids)},
     )
     return values
 

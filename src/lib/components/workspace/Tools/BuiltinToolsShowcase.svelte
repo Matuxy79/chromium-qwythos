@@ -6,6 +6,7 @@
 	const i18n = getContext('i18n');
 
 	export let onNavigate: (path: string) => void = () => {};
+	export let onConfigure: (toolId: string) => void = () => {};
 
 	interface ToolCard {
 		id: string;
@@ -22,6 +23,9 @@
 		borderGradient: string;
 		particleColor: string;
 		howTo: string;
+		prompt: string;
+		route?: string;
+		configurable?: boolean;
 	}
 
 	const tools: ToolCard[] = [
@@ -44,7 +48,10 @@
 			gradient: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
 			borderGradient: 'linear-gradient(135deg, #fbbf24, #f59e0b, #d97706, #fbbf24)',
 			particleColor: '#fbbf24',
-			howTo: 'Set COUNCIL_MODELS or pass models[] per call'
+			howTo: "Set COUNCIL_MODELS or pass a comma-separated models list per call",
+			prompt: 'Use the LLM council to help me decide: ',
+			route: '/council',
+			configurable: true
 		},
 		{
 			id: 'subagent',
@@ -65,7 +72,8 @@
 			gradient: 'linear-gradient(135deg, #1a1a2e 0%, #1e1b3a 50%, #2d1b69 100%)',
 			borderGradient: 'linear-gradient(135deg, #a78bfa, #8b5cf6, #7c3aed, #a78bfa)',
 			particleColor: '#a78bfa',
-			howTo: 'Use run_sub_agent(description, prompt)'
+			howTo: 'Use run_sub_agent(description, prompt)',
+			prompt: 'Delegate this to a sub-agent: '
 		},
 		{
 			id: 'parallel',
@@ -86,7 +94,8 @@
 			gradient: 'linear-gradient(135deg, #0f172a 0%, #0c1e3a 50%, #0e3654 100%)',
 			borderGradient: 'linear-gradient(135deg, #38bdf8, #0ea5e9, #0284c7, #38bdf8)',
 			particleColor: '#38bdf8',
-			howTo: 'Use run_parallel_sub_agents(tasks=[…])'
+			howTo: 'Use run_parallel_sub_agents(tasks=[…])',
+			prompt: 'Run this as parallel sub-agents: '
 		}
 	];
 
@@ -94,6 +103,14 @@
 	let mounted = false;
 	let particles: { id: number; x: number; y: number; size: number; delay: number; color: string }[] =
 		[];
+
+	const launchTool = (tool: ToolCard) => {
+		if (tool.route) {
+			onNavigate(tool.route);
+			return;
+		}
+		onNavigate(`/?q=${encodeURIComponent(tool.prompt)}&submit=false`);
+	};
 
 	onMount(() => {
 		mounted = true;
@@ -218,6 +235,31 @@
 						<!-- How to use -->
 						<div class="how-to">
 							<code class="how-to-code">{tool.howTo}</code>
+						</div>
+
+						<!-- Launch -->
+						<div class="launch-row">
+							<button
+								type="button"
+								class="launch-btn"
+								aria-label={tool.route
+									? `Open ${tool.name}`
+									: `Try ${tool.name} in a new chat`}
+								on:click={() => launchTool(tool)}
+							>
+								<span>{tool.route ? 'Open' : 'Try it'}</span>
+								<span class="launch-arrow" aria-hidden="true">→</span>
+							</button>
+							{#if tool.configurable}
+								<button
+									type="button"
+									class="configure-btn"
+									aria-label={`Configure ${tool.name}`}
+									on:click={() => onConfigure(tool.id)}
+								>
+									Configure
+								</button>
+							{/if}
 						</div>
 					</div>
 				</div>
@@ -679,6 +721,94 @@
 		background: rgba(0, 0, 0, 0.04);
 		color: #475569;
 		border-color: rgba(0, 0, 0, 0.06);
+	}
+
+	/* Launch row */
+	.launch-row {
+		display: flex;
+		align-items: stretch;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+	}
+
+	/* Launch button */
+	.launch-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.35rem;
+		flex: 1;
+		padding: 0.45rem 0.75rem;
+		border-radius: 8px;
+		border: 1px solid var(--tier-color);
+		background: transparent;
+		color: var(--tier-color);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		cursor: pointer;
+		transition: background 0.2s ease, transform 0.2s ease;
+	}
+
+	.configure-btn {
+		flex-shrink: 0;
+		padding: 0.45rem 0.75rem;
+		border-radius: 8px;
+		border: 1px solid rgba(148, 163, 184, 0.35);
+		background: transparent;
+		color: #94a3b8;
+		font-size: 0.7rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		cursor: pointer;
+		transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+	}
+
+	.configure-btn:hover,
+	.configure-btn:focus-visible {
+		background: rgba(148, 163, 184, 0.1);
+		border-color: #94a3b8;
+		color: #cbd5e1;
+	}
+
+	.configure-btn:focus-visible {
+		outline: 2px solid #94a3b8;
+		outline-offset: 2px;
+	}
+
+	:global(:not(.dark)) .configure-btn {
+		color: #64748b;
+		border-color: rgba(100, 116, 139, 0.3);
+	}
+
+	:global(:not(.dark)) .configure-btn:hover,
+	:global(:not(.dark)) .configure-btn:focus-visible {
+		background: rgba(100, 116, 139, 0.08);
+		border-color: #64748b;
+		color: #334155;
+	}
+
+	.launch-btn:hover,
+	.launch-btn:focus-visible {
+		background: var(--tier-glow);
+		transform: translateY(-1px);
+	}
+
+	.launch-btn:focus-visible {
+		outline: 2px solid var(--tier-color);
+		outline-offset: 2px;
+	}
+
+	.launch-btn:active {
+		transform: translateY(0);
+	}
+
+	.launch-arrow {
+		transition: transform 0.2s ease;
+	}
+
+	.launch-btn:hover .launch-arrow {
+		transform: translateX(2px);
 	}
 
 	/* Bottom hint */
