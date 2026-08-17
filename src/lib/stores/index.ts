@@ -198,13 +198,13 @@ export const desktopEvent: Writable<DesktopEvent | null> = writable(null);
 export const isLastActiveTab = writable(true);
 export const playingNotificationSound = writable(false);
 
-export type Model = OpenAIModel | OllamaModel;
+export type Model = OpenAIModel | OllamaModel | VirtualModel;
 
 type BaseModel = {
 	id: string;
 	name: string;
 	info?: ModelConfig;
-	owned_by: 'ollama' | 'openai' | 'arena';
+	owned_by: 'ollama' | 'openai' | 'arena' | 'council';
 };
 
 export interface OpenAIModel extends BaseModel {
@@ -237,6 +237,12 @@ export interface OllamaModel extends BaseModel {
 		};
 		urls?: number[];
 	};
+}
+
+export interface VirtualModel extends BaseModel {
+	owned_by: 'arena' | 'council';
+	arena?: boolean;
+	council?: boolean;
 }
 
 type OllamaModelDetails = {

@@ -2057,6 +2057,37 @@ DEFAULT_ARENA_MODEL = {
     },
 }
 
+# Config-driven chat model (not a models-table row). Public read so it
+# shows in the dropdown for non-admins the same way a public arena model does.
+DEFAULT_COUNCIL_MODEL_ID = 'llm-council'
+DEFAULT_COUNCIL_MODEL = {
+    'id': DEFAULT_COUNCIL_MODEL_ID,
+    'name': 'LLM Council',
+    'meta': {
+        'profile_image_url': '/favicon.png',
+        'description': 'Ask a council of models. They answer in parallel, peer-rank, and a chairman synthesizes.',
+        'access_grants': [
+            {'principal_type': 'user', 'principal_id': '*', 'permission': 'read'},
+        ],
+        'capabilities': {
+            'vision': True,
+            'file_upload': True,
+            'web_search': True,
+            'image_generation': True,
+            'code_interpreter': True,
+            'citations': True,
+            'status_updates': True,
+            'memory': True,
+            'builtin_tools': True,
+        },
+        # Members inherit the chat's builtin tools; the wrapper must not
+        # convene another council or it recurses.
+        'builtinTools': {
+            'council': False,
+        },
+    },
+}
+
 WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
 
 ENABLE_ADMIN_EXPORT = os.getenv('ENABLE_ADMIN_EXPORT', 'True').lower() == 'true'

@@ -224,7 +224,8 @@ async def generate_chat_completion(
                 model_ids = [
                     available_model['id']
                     for available_model in list(request.app.state.MODELS.values())
-                    if available_model.get('owned_by') != 'arena' and available_model['id'] not in model_ids
+                    if available_model.get('owned_by') not in ('arena', 'council')
+                    and available_model['id'] not in model_ids
                 ]
 
             if isinstance(model_ids, list) and model_ids:
@@ -233,7 +234,7 @@ async def generate_chat_completion(
                 model_ids = [
                     available_model['id']
                     for available_model in list(request.app.state.MODELS.values())
-                    if available_model.get('owned_by') != 'arena'
+                    if available_model.get('owned_by') not in ('arena', 'council')
                 ]
                 selected_model_id = random.choice(model_ids)
 
@@ -278,6 +279,11 @@ async def generate_chat_completion(
                     ),
                     'selected_model_id': selected_model_id,
                 }
+
+        if model.get('council'):
+            from qwythos.utils.council import generate_council_chat_completion
+
+            return await generate_council_chat_completion(request, form_data, user, model)
 
         if model.get('pipe'):
             # Below does not require bypass_filter because this is the only route the uses this function and it is already bypassing the filter

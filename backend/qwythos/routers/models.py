@@ -18,7 +18,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import RedirectResponse, StreamingResponse
-from qwythos.config import BYPASS_ADMIN_ACCESS_CONTROL
+from qwythos.config import BYPASS_ADMIN_ACCESS_CONTROL, DEFAULT_COUNCIL_MODEL
 from qwythos.constants import ERROR_MESSAGES
 from qwythos.events import EVENTS, publish_event
 from qwythos.env import ENABLE_PROFILE_IMAGE_URL_FORWARDING, PROFILE_IMAGE_ALLOWED_MIME_TYPES
@@ -582,13 +582,16 @@ async def get_model_profile_image(
         meta, updated_at = model_meta
         profile_image_url = (meta or {}).get('profile_image_url')
 
-    # Fallback: check arena models stored in config (not in the DB)
+    # Fallback: check arena / council models stored in config (not in the DB)
     if not profile_image_url:
         arena_models = await Config.get('evaluation.arena.models', []) or []
         for arena_model in arena_models:
             if arena_model.get('id') == id:
                 profile_image_url = arena_model.get('meta', {}).get('profile_image_url')
                 break
+
+    if not profile_image_url and id == DEFAULT_COUNCIL_MODEL.get('id'):
+        profile_image_url = DEFAULT_COUNCIL_MODEL.get('meta', {}).get('profile_image_url')
 
     if profile_image_url:
         if profile_image_url.startswith('http'):
