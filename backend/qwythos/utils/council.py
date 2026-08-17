@@ -7,7 +7,10 @@ Stage 2 — every council model ranks the anonymized answers; ballots are
 Stage 3 — a chairman model synthesizes the final answer from the question,
           the anonymized answers, and the aggregate ranking.
 
-Used by the ``run_llm_council`` built-in tool (qwythos/tools/builtin.py).
+Used by the ``run_llm_council`` built-in tool (qwythos/tools/builtin.py) and by
+the ``/api/v1/council/run`` endpoint (qwythos/routers/council.py), both of which
+call ``run_council_pipeline`` and adapt its structured result to their own
+response shape.
 """
 
 import asyncio
@@ -130,7 +133,7 @@ def _parse_ranking(text: str, labels: list[str]) -> Optional[list[str]]:
     return found + [label for label in labels if label not in found]
 
 
-async def run_council(
+async def run_council_pipeline(
     question: str,
     models: str = '',
     chairman_model: str = '',
@@ -138,14 +141,23 @@ async def run_council(
     request: Request,
     user_data: dict,
     event_emitter: Optional[Callable] = None,
-) -> str:
-    """Run the 3-stage LLM council deliberation and return the chairman's answer."""
+) -> dict:
+    """Run the 3-stage LLM council deliberation and return structured results.
+
+    Always returns a dict with an ``error`` key (``None`` on success) and a
+    ``text`` key holding the same flattened-string rendering the ``run_llm_council``
+    tool has always returned, so callers that only need that string (the tool
+    wrapper) and callers that need structured data (the council API endpoint)
+    share one code path.
+    """
     if getattr(request.state, 'internal', False) is True:
-        return 'Error: the LLM council cannot be convened from a sub-agent.'
+        error = 'Error: the LLM council cannot be convened from a sub-agent.'
+        return {'error': error, 'text': error}
 
     question = (question or '').strip()
     if not question:
-        return 'Error: question must not be empty.'
+        error = 'Error: question must not be empty.'
+        return {'error': error, 'text': error}
 
     config = await Config.get_many('council.models', 'council.chairman_model')
 
@@ -155,14 +167,17 @@ async def run_council(
     council_models = list(dict.fromkeys(council_models))
 
     if not council_models:
-        return (
+        error = (
             'Error: no council models configured. Pass the "models" parameter '
             '(comma-separated model IDs) or set council.models in the config.'
         )
+        return {'error': error, 'text': error}
     if len(council_models) > MAX_COUNCIL_MODELS:
-        return f'Error: too many council models ({len(council_models)}); maximum is {MAX_COUNCIL_MODELS}.'
+        error = f'Error: too many council models ({len(council_models)}); maximum is {MAX_COUNCIL_MODELS}.'
+        return {'error': error, 'text': error}
     if len(council_models) < 2:
-        return 'Error: the council needs at least 2 models.'
+        error = 'Error: the council needs at least 2 models.'
+        return {'error': error, 'text': error}
 
     available_models = getattr(request.app.state, 'MODELS', {}) or {}
     unknown = [m for m in council_models if m not in available_models]
@@ -170,7 +185,8 @@ async def run_council(
         log.warning(f'LLM council: unknown model IDs ignored: {unknown}')
         council_models = [m for m in council_models if m in available_models]
         if len(council_models) < 2:
-            return f'Error: fewer than 2 valid council models after filtering unknown IDs: {unknown}'
+            error = f'Error: fewer than 2 valid council models after filtering unknown IDs: {unknown}'
+            return {'error': error, 'text': error}
 
     chairman = (chairman_model or '').strip() or str(config.get('council.chairman_model') or '').strip()
     if chairman and chairman not in available_models:
@@ -208,10 +224,11 @@ async def run_council(
             failed_models.append(model_id)
 
     if len(responses) < 2:
-        return (
+        error = (
             'Error: the council could not proceed — fewer than 2 models produced an answer. '
             f'Failed models: {", ".join(failed_models) or "unknown"}.'
         )
+        return {'error': error, 'text': error}
 
     active_labels = [label for label in labels if label in responses]
     anonymized = '\n\n'.join(f'Response {label}:\n{responses[label]}' for label in active_labels)
@@ -274,7 +291,7 @@ async def run_council(
     await _emit_status(event_emitter, 'LLM Council: deliberation complete', done=True)
 
     deanon = {f'Response {label}': answerers[label] for label in active_labels}
-    parts = [
+    text_parts = [
         final_answer,
         '---',
         'Council deliberation summary:',
@@ -284,4 +301,44 @@ async def run_council(
         f'Aggregate ranking: {ranking_summary}',
         f'Anonymization key: {json.dumps(deanon, ensure_ascii=False)}',
     ]
-    return '\n\n'.join(parts)
+
+    return {
+        'error': None,
+        'text': '\n\n'.join(text_parts),
+        'question': question,
+        'chairman': chairman,
+        'final_answer': final_answer,
+        'failed_models': failed_models,
+        'responses': [
+            {'model': answerers[label], 'answer': responses[label]} for label in active_labels
+        ],
+        'ranking': [
+            {
+                'model': answerers[label],
+                'rank': i + 1,
+                'avg_rank': round(position_sums[label] / ballot_count, 2) if ballot_count else None,
+            }
+            for i, label in enumerate(aggregate)
+        ],
+    }
+
+
+async def run_council(
+    question: str,
+    models: str = '',
+    chairman_model: str = '',
+    *,
+    request: Request,
+    user_data: dict,
+    event_emitter: Optional[Callable] = None,
+) -> str:
+    """Run the 3-stage LLM council deliberation and return the chairman's answer."""
+    result = await run_council_pipeline(
+        question,
+        models,
+        chairman_model,
+        request=request,
+        user_data=user_data,
+        event_emitter=event_emitter,
+    )
+    return result['text']

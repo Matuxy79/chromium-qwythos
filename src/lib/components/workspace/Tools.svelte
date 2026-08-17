@@ -40,6 +40,7 @@
 	import ViewSelector from './common/ViewSelector.svelte';
 	import CommunityDiscover from './common/CommunityDiscover.svelte';
 	import BuiltinToolsShowcase from './Tools/BuiltinToolsShowcase.svelte';
+	import CouncilSettingsModal from './Tools/CouncilSettingsModal.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
 	import ChevronDown from '../icons/ChevronDown.svelte';
 	import ChevronUp from '../icons/ChevronUp.svelte';
@@ -70,6 +71,7 @@
 	let openToolMenuId: string | null = null;
 
 	let showImportModal = false;
+	let showCouncilModal = false;
 
 	$: if (loaded) {
 		workspaceActions.set([
@@ -619,6 +621,11 @@
 			{:else}
 				<BuiltinToolsShowcase
 					onNavigate={(path) => goto(path)}
+					onConfigure={(toolId) => {
+						if (toolId === 'council') {
+							showCouncilModal = true;
+						}
+					}}
 				/>
 			{/if}
 		{/if}
@@ -646,6 +653,7 @@
 
 	<ValvesModal bind:show={showValvesModal} type="tool" id={selectedTool?.id ?? null} />
 	<ManifestModal bind:show={showManifestModal} manifest={selectedTool?.meta?.manifest ?? {}} />
+	<CouncilSettingsModal bind:show={showCouncilModal} />
 
 	<ConfirmDialog
 		bind:show={showConfirm}

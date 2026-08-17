@@ -56,6 +56,10 @@
 
 	const launchTool = async (id: keyof typeof TOOL_CARDS) => {
 		show = false;
+		if (id === 'council') {
+			goto('/council');
+			return;
+		}
 		await newChatHandler();
 		goto(`/?q=${encodeURIComponent($i18n.t(TOOL_CARDS[id].prompt))}&submit=false`);
 	};

@@ -147,6 +147,7 @@ from qwythos.routers import (
     channels,
     chats,
     configs,
+    council,
     evaluations,
     files,
     folders,
@@ -918,6 +919,7 @@ app.include_router(audio.router, prefix='/api/v1/audio', tags=['audio'])
 app.include_router(retrieval.router, prefix='/api/v1/retrieval', tags=['retrieval'])
 
 app.include_router(configs.router, prefix='/api/v1/configs', tags=['configs'])
+app.include_router(council.router, prefix='/api/v1/council', tags=['council'])
 
 app.include_router(auths.router, prefix='/api/v1/auths', tags=['auths'])
 app.include_router(users.router, prefix='/api/v1/users', tags=['users'])
