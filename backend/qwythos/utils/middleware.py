@@ -2264,7 +2264,8 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             arena_model_ids = [
                 available_model['id']
                 for available_model in request.app.state.MODELS.values()
-                if available_model.get('owned_by') != 'arena' and available_model['id'] not in arena_model_ids
+                if available_model.get('owned_by') not in ('arena', 'council')
+                and available_model['id'] not in arena_model_ids
             ]
 
         if isinstance(arena_model_ids, list) and arena_model_ids:
@@ -2273,7 +2274,7 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             arena_model_ids = [
                 available_model['id']
                 for available_model in request.app.state.MODELS.values()
-                if available_model.get('owned_by') != 'arena'
+                if available_model.get('owned_by') not in ('arena', 'council')
             ]
             selected_model_id = random.choice(arena_model_ids)
 

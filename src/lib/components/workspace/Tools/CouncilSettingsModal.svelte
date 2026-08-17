@@ -4,6 +4,8 @@
 
 	import { models as modelsStore, user } from '$lib/stores';
 	import { getCouncilConfig, setCouncilConfig } from '$lib/apis/configs';
+	import { getModels } from '$lib/apis';
+	import { LLM_COUNCIL_MODEL_ID } from '$lib/constants';
 
 	import Modal from '$lib/components/common/Modal.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
@@ -27,6 +29,9 @@
 	let chairmanModelId = '';
 
 	$: isAdmin = $user?.role === 'admin';
+	$: rosterModels = $modelsStore.filter(
+		(m) => m.owned_by !== 'council' && m.owned_by !== 'arena' && m.id !== LLM_COUNCIL_MODEL_ID
+	);
 	$: valid = modelIds.length >= MIN_MODELS && modelIds.length <= MAX_MODELS;
 	$: if (chairmanModelId && !modelIds.includes(chairmanModelId)) {
 		chairmanModelId = '';
@@ -71,6 +76,11 @@
 				COUNCIL_MODELS: modelIds.join(','),
 				COUNCIL_CHAIRMAN_MODEL: chairmanModelId
 			});
+			try {
+				await modelsStore.set(await getModels(localStorage.token));
+			} catch {
+				// Dropdown will pick up the council model on next full models refresh.
+			}
 			toast.success($i18n.t('Council settings saved'));
 		} catch (error) {
 			toast.error(`${error?.detail ?? error}`);
@@ -132,7 +142,7 @@
 								'Pick {{min}}-{{max}} models. Every prompt sent to the council goes to all of them in parallel.',
 								{ min: MIN_MODELS, max: MAX_MODELS }
 							)}
-							models={modelIds.length >= MAX_MODELS ? [] : $modelsStore}
+							models={modelIds.length >= MAX_MODELS ? [] : rosterModels}
 							bind:modelIds
 						/>
 						{#if !valid}
@@ -165,7 +175,7 @@
 
 					<div class="text-xs text-gray-500">
 						{$i18n.t(
-							'To let a chat model call the council, enable the "LLM Council" builtin tool for it in Workspace → Models → (edit model) → Builtin Tools.'
+							'Once a roster is saved, "LLM Council" appears in the chat model dropdown. Member models can use the same builtin tools as a normal chat (web search, files, knowledge). To let a different chat model call the council as a tool, enable "LLM Council" under Workspace → Models → Builtin Tools.'
 						)}
 					</div>
 

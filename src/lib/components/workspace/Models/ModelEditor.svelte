@@ -179,6 +179,7 @@
 						(edit && baseModel.id === info.base_model_id)) &&
 					(!baseModel?.preset || (edit && baseModel.id === info.base_model_id)) &&
 					baseModel?.owned_by !== 'arena' &&
+					baseModel?.owned_by !== 'council' &&
 					!(baseModel?.direct ?? false) &&
 					($user?.role === 'admin' ||
 						!(baseModel?.info?.meta?.hidden ?? false) ||

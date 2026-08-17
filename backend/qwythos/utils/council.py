@@ -24,10 +24,19 @@ from fastapi import Request
 
 from qwythos.models.config import Config
 from qwythos.models.users import UserModel
+from starlette.responses import StreamingResponse
+
+from qwythos.utils.misc import (
+    get_last_user_message,
+    openai_chat_chunk_message_template,
+    openai_chat_completion_message_template,
+)
 
 log = logging.getLogger(__name__)
 
 MAX_COUNCIL_MODELS = 10
+MAX_COUNCIL_TOOL_ITERATIONS = 8
+COUNCIL_BLOCKED_TOOLS = frozenset({'run_llm_council'})
 
 STAGE2_RANKING_PROMPT = """You are one judge on an LLM council evaluating anonymized responses to a question.
 
@@ -82,28 +91,154 @@ def _extract_content(response: Any) -> Optional[str]:
     return content.strip()
 
 
-async def _council_completion(request: Request, user: UserModel, model_id: str, messages: list) -> Optional[str]:
-    """Run one non-streaming completion; return text or None on any failure."""
-    from qwythos.utils.chat import generate_chat_completion
+def _message_from_completion(response: Any) -> Optional[dict]:
+    if not isinstance(response, dict):
+        return None
+    choices = response.get('choices') or []
+    if not choices or not isinstance(choices[0], dict):
+        return None
+    message = choices[0].get('message')
+    return message if isinstance(message, dict) else None
+
+
+def _filter_tool_specs(tools: Optional[list]) -> list:
+    if not tools:
+        return []
+    filtered = []
+    for spec in tools:
+        if not isinstance(spec, dict):
+            continue
+        name = (spec.get('function') or {}).get('name') or spec.get('name')
+        if name in COUNCIL_BLOCKED_TOOLS:
+            continue
+        filtered.append(spec)
+    return filtered
+
+
+async def _execute_tool_call(tool_call: dict, tools_dict: dict, messages: list, files: list) -> str:
+    """Run one OpenAI-style tool call against the already-resolved tools_dict."""
+    from qwythos.utils.tools import get_updated_tool_function
+
+    function = tool_call.get('function') or {}
+    name = function.get('name') or ''
+    if name in COUNCIL_BLOCKED_TOOLS:
+        return f'Error: tool "{name}" is not available during council deliberation.'
+
+    tool = tools_dict.get(name)
+    if not tool:
+        return f'Error: Tool "{name}" not found.'
+    if tool.get('direct'):
+        return f'Error: client-side tool "{name}" is not available during council deliberation.'
+
+    raw_args = function.get('arguments') or '{}'
+    try:
+        params = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args or {})
+    except Exception:
+        return f'Error: could not parse arguments for "{name}".'
+
+    spec = tool.get('spec') or {}
+    allowed = (spec.get('parameters') or {}).get('properties') or {}
+    if allowed:
+        params = {key: value for key, value in params.items() if key in allowed}
+
+    callable_fn = tool.get('callable')
+    if not callable(callable_fn):
+        return f'Error: tool "{name}" has no callable.'
 
     try:
-        response = await generate_chat_completion(
-            request=request,
-            form_data={
-                'model': model_id,
-                'messages': messages,
-                'stream': False,
-                'metadata': {'task': 'llm_council'},
-            },
-            user=user,
-            bypass_filter=True,
+        function_to_run = await get_updated_tool_function(
+            function=callable_fn,
+            extra_params={'__messages__': messages, '__files__': files},
         )
+        result = await function_to_run(**params)
     except Exception as exc:
-        log.warning(f'LLM council: completion failed for model {model_id}: {exc}')
-        return None
-    content = _extract_content(response)
-    if content is None:
-        log.warning(f'LLM council: no usable response from model {model_id}: {type(response).__name__}')
+        return f'Error running {name}: {exc}'
+
+    if isinstance(result, str):
+        return result
+    try:
+        return json.dumps(result, ensure_ascii=False, default=str)
+    except Exception:
+        return str(result)
+
+
+async def _council_completion(
+    request: Request,
+    user: UserModel,
+    model_id: str,
+    messages: list,
+    *,
+    tools: Optional[list] = None,
+    tools_dict: Optional[dict] = None,
+    files: Optional[list] = None,
+) -> Optional[str]:
+    """Run one non-streaming completion; return text or None on any failure.
+
+    When ``tools``/``tools_dict`` are supplied (chat-path council), stage-1
+    members can call the same builtins the parent chat resolved — web search,
+    files, knowledge, etc. Ranking and chairman synthesis stay text-only.
+    """
+    from qwythos.utils.chat import generate_chat_completion
+
+    current_messages = list(messages)
+    tool_specs = _filter_tool_specs(tools)
+    resolved_tools = {
+        name: tool for name, tool in (tools_dict or {}).items() if name not in COUNCIL_BLOCKED_TOOLS
+    }
+    use_tools = bool(tool_specs and resolved_tools)
+    files = files or []
+    content: Optional[str] = None
+
+    for _ in range((MAX_COUNCIL_TOOL_ITERATIONS if use_tools else 0) + 1):
+        form_data: dict[str, Any] = {
+            'model': model_id,
+            'messages': current_messages,
+            'stream': False,
+            'metadata': {'task': 'llm_council'},
+        }
+        if use_tools:
+            form_data['tools'] = tool_specs
+
+        try:
+            response = await generate_chat_completion(
+                request=request,
+                form_data=form_data,
+                user=user,
+                bypass_filter=True,
+            )
+        except Exception as exc:
+            log.warning(f'LLM council: completion failed for model {model_id}: {exc}')
+            return None
+
+        if not isinstance(response, dict):
+            log.warning(
+                f'LLM council: no usable response from model {model_id}: {type(response).__name__}'
+            )
+            return None
+
+        message = _message_from_completion(response)
+        if message is None:
+            log.warning(f'LLM council: no usable response from model {model_id}: {type(response).__name__}')
+            return None
+
+        tool_calls = message.get('tool_calls') or []
+        content = _extract_content(response)
+        if not tool_calls or not use_tools:
+            return content
+
+        current_messages.append(message)
+        for tool_call in tool_calls:
+            if not isinstance(tool_call, dict):
+                continue
+            result = await _execute_tool_call(tool_call, resolved_tools, current_messages, files)
+            current_messages.append(
+                {
+                    'role': 'tool',
+                    'tool_call_id': tool_call.get('id') or '',
+                    'content': result,
+                }
+            )
+
     return content
 
 
@@ -141,6 +276,10 @@ async def run_council_pipeline(
     request: Request,
     user_data: dict,
     event_emitter: Optional[Callable] = None,
+    messages: Optional[list] = None,
+    tools: Optional[list] = None,
+    tools_dict: Optional[dict] = None,
+    files: Optional[list] = None,
 ) -> dict:
     """Run the 3-stage LLM council deliberation and return structured results.
 
@@ -149,15 +288,21 @@ async def run_council_pipeline(
     tool has always returned, so callers that only need that string (the tool
     wrapper) and callers that need structured data (the council API endpoint)
     share one code path.
+
+    ``messages``/``tools``/``tools_dict`` are used by the chat-model path so
+    stage 1 sees conversation history and can call the parent chat's builtins.
+    Ranking and chairman synthesis stay text-only.
     """
     if getattr(request.state, 'internal', False) is True:
         error = 'Error: the LLM council cannot be convened from a sub-agent.'
         return {'error': error, 'text': error}
 
     question = (question or '').strip()
-    if not question:
+    if not question and not messages:
         error = 'Error: question must not be empty.'
         return {'error': error, 'text': error}
+    if not question:
+        question = '(see conversation history)'
 
     config = await Config.get_many('council.models', 'council.chairman_model')
 
@@ -188,8 +333,24 @@ async def run_council_pipeline(
             error = f'Error: fewer than 2 valid council models after filtering unknown IDs: {unknown}'
             return {'error': error, 'text': error}
 
+    # Never seat the council wrapper on itself.
+    council_models = [
+        model_id
+        for model_id in council_models
+        if not (available_models.get(model_id) or {}).get('council')
+        and (available_models.get(model_id) or {}).get('owned_by') != 'council'
+    ]
+    if len(council_models) < 2:
+        error = 'Error: fewer than 2 valid council models after excluding the council wrapper.'
+        return {'error': error, 'text': error}
+
     chairman = (chairman_model or '').strip() or str(config.get('council.chairman_model') or '').strip()
-    if chairman and chairman not in available_models:
+    chairman_entry = available_models.get(chairman) or {}
+    if chairman and (
+        chairman not in available_models
+        or chairman_entry.get('council')
+        or chairman_entry.get('owned_by') == 'council'
+    ):
         log.warning(f'LLM council: unknown chairman model {chairman}; falling back')
         chairman = ''
     if not chairman:
@@ -198,6 +359,7 @@ async def run_council_pipeline(
     user = UserModel(**user_data) if isinstance(user_data, dict) else user_data
 
     labels = list(ascii_uppercase[: len(council_models)])
+    stage1_messages = messages if messages else [{'role': 'user', 'content': question}]
 
     # ------------------------------------------------------------------
     # Stage 1 — individual responses (parallel)
@@ -208,7 +370,15 @@ async def run_council_pipeline(
     )
     stage1_results = await asyncio.gather(
         *(
-            _council_completion(request, user, model_id, [{'role': 'user', 'content': question}])
+            _council_completion(
+                request,
+                user,
+                model_id,
+                stage1_messages,
+                tools=tools,
+                tools_dict=tools_dict,
+                files=files,
+            )
             for model_id in council_models
         )
     )
@@ -342,3 +512,99 @@ async def run_council(
         event_emitter=event_emitter,
     )
     return result['text']
+
+
+def _format_chat_answer(result: dict) -> str:
+    """Chairman synthesis plus a collapsible deliberation appendix for chat."""
+    final = result.get('final_answer') or result.get('text') or ''
+    ranking = result.get('ranking') or []
+    responses = {item['model']: item['answer'] for item in result.get('responses') or []}
+    chairman = result.get('chairman') or ''
+    if not ranking:
+        return final
+
+    lines = [
+        final,
+        '',
+        '<details>',
+        '<summary>Council deliberation</summary>',
+        '',
+        f'Chairman: {chairman}',
+        '',
+    ]
+    for item in ranking:
+        model_id = item.get('model') or ''
+        rank = item.get('rank')
+        answer = responses.get(model_id, '')
+        lines.append(f'### {rank}. {model_id}')
+        lines.append('')
+        lines.append(answer)
+        lines.append('')
+    failed = result.get('failed_models') or []
+    if failed:
+        lines.append(f'Did not respond: {", ".join(failed)}')
+        lines.append('')
+    lines.append('</details>')
+    return '\n'.join(lines)
+
+
+async def generate_council_chat_completion(request: Request, form_data: dict, user: UserModel, model: dict):
+    """Chat-model entry point: run the council pipeline and return an OpenAI completion.
+
+    Background tasks (title/tags/follow-up) resolve to the chairman instead of
+    running the full 3-stage deliberation.
+    """
+    from qwythos.socket.main import get_event_emitter
+    from qwythos.utils.chat import generate_chat_completion
+
+    metadata = form_data.get('metadata') or {}
+    task = metadata.get('task')
+    meta = (model.get('info') or {}).get('meta') or {}
+    chairman = meta.get('chairman_model') or ''
+    if not chairman:
+        roster = meta.get('model_ids') or []
+        chairman = roster[0] if roster else ''
+
+    if task and task != 'llm_council' and chairman:
+        form_data = {**form_data, 'model': chairman}
+        return await generate_chat_completion(
+            request,
+            form_data,
+            user,
+            bypass_filter=True,
+        )
+
+    messages = form_data.get('messages') or []
+    question = (get_last_user_message(messages) or '').strip()
+    event_emitter = None
+    if all(k in metadata for k in ('session_id', 'chat_id', 'message_id')):
+        event_emitter = await get_event_emitter(metadata)
+
+    result = await run_council_pipeline(
+        question,
+        request=request,
+        user_data=user,
+        event_emitter=event_emitter,
+        messages=messages or None,
+        tools=form_data.get('tools'),
+        tools_dict=metadata.get('tools'),
+        files=metadata.get('files'),
+    )
+    if result.get('error'):
+        raise Exception(result['error'])
+
+    content = _format_chat_answer(result)
+    model_id = form_data.get('model') or model.get('id')
+
+    if form_data.get('stream'):
+        async def _stream():
+            chunk = openai_chat_chunk_message_template(model_id, content=content)
+            yield f'data: {json.dumps(chunk)}\n\n'
+            finish = openai_chat_chunk_message_template(model_id)
+            yield f'data: {json.dumps(finish)}\n\n'
+            yield 'data: [DONE]\n\n'
+
+        return StreamingResponse(_stream(), media_type='text/event-stream')
+
+    return openai_chat_completion_message_template(model_id, content)
+

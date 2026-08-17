@@ -131,6 +131,7 @@ from qwythos.events import (
 )
 from qwythos.internal.db import engine, get_async_session
 from qwythos.models.access_grants import AccessGrants
+from qwythos.utils.access_control import has_access
 from qwythos.models.channels import Channels
 from qwythos.models.chats import ChatForm, Chats
 from qwythos.models.config import Config
@@ -246,6 +247,7 @@ from qwythos.utils.models import (
     get_all_base_models,
     get_all_models,
     get_filtered_models,
+    is_virtual_model,
 )
 from qwythos.utils.oauth import (
     OAuthClientInformationFull,
@@ -1201,10 +1203,20 @@ async def chat_completion(
 
             # Check if user has access to the model
             if not BYPASS_MODEL_ACCESS_CONTROL and (user.role != 'admin' or not BYPASS_ADMIN_ACCESS_CONTROL):
-                try:
-                    await check_model_access(user, model, model_info=model_info)
-                except Exception as e:
-                    raise e
+                if is_virtual_model(model):
+                    # Config-driven models (arena, council) carry their access rules in meta.access_grants.
+                    access_grants = (model.get('info') or {}).get('meta', {}).get('access_grants', [])
+                    if user.role != 'admin' and not await has_access(
+                        user.id,
+                        'read',
+                        access_grants,
+                    ):
+                        raise Exception('Model not found')
+                else:
+                    try:
+                        await check_model_access(user, model, model_info=model_info)
+                    except Exception as e:
+                        raise e
         else:
             model = model_item
             await _set_direct_model(request, model, user)

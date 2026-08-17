@@ -114,6 +114,8 @@ export const DEFAULT_CAPABILITIES = {
 
 export const PASTED_TEXT_CHARACTER_LIMIT = 1000;
 
+export const LLM_COUNCIL_MODEL_ID = 'llm-council';
+
 // Source: https://kit.svelte.dev/docs/modules#$env-static-public
 // This feature, akin to $env/static/private, exclusively incorporates environment variables
 // that are prefixed with config.kit.env.publicPrefix (usually set to PUBLIC_).

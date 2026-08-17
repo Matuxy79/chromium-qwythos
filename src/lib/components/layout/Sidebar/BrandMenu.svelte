@@ -4,6 +4,7 @@
 	import { page } from '$app/stores';
 
 	import { user, config, mobile, showSearch, showSidebar } from '$lib/stores';
+	import { LLM_COUNCIL_MODEL_ID } from '$lib/constants';
 
 	import Dropdown from '$lib/components/common/Dropdown.svelte';
 	import { getMenuItemMeta, isMenuItemVisible, getActiveMenuItemId } from './navItems';
@@ -56,11 +57,11 @@
 
 	const launchTool = async (id: keyof typeof TOOL_CARDS) => {
 		show = false;
+		await newChatHandler();
 		if (id === 'council') {
-			goto('/council');
+			goto(`/?model=${encodeURIComponent(LLM_COUNCIL_MODEL_ID)}`);
 			return;
 		}
-		await newChatHandler();
 		goto(`/?q=${encodeURIComponent($i18n.t(TOOL_CARDS[id].prompt))}&submit=false`);
 	};
 

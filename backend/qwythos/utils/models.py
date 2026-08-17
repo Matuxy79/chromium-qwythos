@@ -8,6 +8,7 @@ from fastapi import Request
 from qwythos.config import (
     BYPASS_ADMIN_ACCESS_CONTROL,
     DEFAULT_ARENA_MODEL,
+    DEFAULT_COUNCIL_MODEL,
 )
 from qwythos.env import BYPASS_MODEL_ACCESS_CONTROL, ENABLE_PLUGINS, GLOBAL_LOG_LEVEL
 from qwythos.functions import get_function_models
@@ -28,6 +29,16 @@ from qwythos.utils.plugin import (
 
 logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL)
 log = logging.getLogger(__name__)
+
+# Synthetic models that live in config, not the models table. Access is
+# granted via meta.access_grants (same path as arena), not a DB row.
+VIRTUAL_MODEL_OWNERS = frozenset({'arena', 'council'})
+
+
+def is_virtual_model(model: dict | None) -> bool:
+    if not model:
+        return False
+    return bool(model.get('arena') or model.get('council') or model.get('owned_by') in VIRTUAL_MODEL_OWNERS)
 
 
 async def fetch_ollama_models(request: Request, user: UserModel = None):
@@ -70,6 +81,9 @@ async def get_all_models(request, refresh: bool = False, user: UserModel = None)
         'evaluation.arena.enable',
         'evaluation.arena.models',
         'models.default_metadata',
+        'council.enable',
+        'council.models',
+        'council.chairman_model',
     )
     if (
         request.app.state.MODELS
@@ -126,6 +140,27 @@ async def get_all_models(request, refresh: bool = False, user: UserModel = None)
                 }
             ]
         models = models + arena_models
+
+    # Add the LLM Council as a first-class chat model when a roster is configured.
+    # Same shape as arena: config-driven, no models-table row.
+    council_ids = [m.strip() for m in str(config.get('council.models') or '').split(',') if m.strip()]
+    if config.get('council.enable') and len(council_ids) >= 2:
+        council_meta = {
+            **DEFAULT_COUNCIL_MODEL['meta'],
+            'model_ids': council_ids,
+            'chairman_model': str(config.get('council.chairman_model') or '').strip() or council_ids[0],
+        }
+        models = models + [
+            {
+                'id': DEFAULT_COUNCIL_MODEL['id'],
+                'name': DEFAULT_COUNCIL_MODEL['name'],
+                'info': {'meta': council_meta},
+                'object': 'model',
+                'created': 0,
+                'owned_by': 'council',
+                'council': True,
+            }
+        ]
 
     # One query per type: the global sets are subsets of the active sets, so
     # deriving them from the same rows halves the function-table queries.
@@ -429,7 +464,7 @@ async def get_all_models(request, refresh: bool = False, user: UserModel = None)
 
 
 async def check_model_access(user, model, model_info=None, db=None):
-    if model.get('arena'):
+    if is_virtual_model(model):
         meta = model.get('info', {}).get('meta', {})
         access_grants = meta.get('access_grants', [])
         if not await has_access(
@@ -479,7 +514,7 @@ async def get_filtered_models(models, user, db=None):
     ) and not BYPASS_MODEL_ACCESS_CONTROL:
         model_infos = {}
         for model in models:
-            if model.get('arena'):
+            if is_virtual_model(model):
                 continue
             info = model.get('info')
             if info:
@@ -499,7 +534,7 @@ async def get_filtered_models(models, user, db=None):
 
         filtered_models = []
         for model in models:
-            if model.get('arena'):
+            if is_virtual_model(model):
                 meta = model.get('info', {}).get('meta', {})
                 access_grants = meta.get('access_grants', [])
                 if await has_access(
