@@ -4,8 +4,12 @@
   "description": "Qwythos is an open, extensible, user-friendly interface for AI that adapts to your workflow.",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "any",
+  "scope": "/",
+  "id": "/",
   "theme_color": "#0d0f14",
   "background_color": "#0d0f14",
+  "categories": ["productivity", "utilities"],
   "icons": [
     {
       "src": "/static/web-app-manifest-192x192.png",
@@ -26,5 +30,19 @@
     "params": {
       "text": "shared"
     }
-  }
+  },
+  "screenshots": [
+    {
+      "src": "/static/splash.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "/static/splash-dark.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ]
 }
