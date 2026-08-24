@@ -11,6 +11,12 @@ Newest entries first. Format:
 
 ---
 
+## 2026-08-24 — Railway `npm ci` lockfile desync (vite-plugin-pwa)
+- Railway Metal builder failed at `RUN npm ci --force` with `EUSAGE`: `package.json` listed `vite-plugin-pwa@^0.21.1` (added in `c8d6553` PWA commit, which only touched `package.json`) but `package-lock.json` had no `vite-plugin-pwa` / workbox / babel-preset-env tree. Secondary mismatch: lockfile `es-object-atoms@1.1.1` vs required `1.1.2`, and lock root still said `0.12.0` after the `0.12.1` bump.
+- Regenerated `package-lock.json` with Node 22.22.1 / npm 10.9.4 via `npm install --package-lock-only`. Resolved `vite-plugin-pwa@0.21.2` and bumped lock root version to `0.12.1`. No `package.json` / Dockerfile changes.
+- Verified by: `npm ci --dry-run --ignore-scripts` succeeded (`added 1528 packages`).
+- Loose ends: lockfile is local-only until committed and pushed; Railway will keep failing on the previous commit. Did not run a full `npm ci` install or Docker/Railway rebuild.
+
 ## 2026-08-24 — Railway Dockerfile VOLUME rejection
 - Railway Metal builder failed with `dockerfile invalid: docker VOLUME at Line 124 is not supported, use Railway Volumes`. Removed `VOLUME ["/app/backend/data"]` from the root `Dockerfile`. Left the `mkdir`/`chown` of that path and a comment that persistence is host-mounted (compose `-v` / Railway Volume), not a Dockerfile VOLUME.
 - `railway.json` already had `"volume": { "mountPath": "/app/backend/data" }`. Docs now warn that a volume staged at `/data` will not persist app state and must be remounted to `/app/backend/data` in the Railway dashboard — that remount is not something the repo can do.
