@@ -87,7 +87,9 @@ SvelteKit 2 + Svelte 5 + Vite 5 + TS + Tailwind 4. Build runs
 - `src/lib/components/` — `chat/` (the beast: MessageInput, Messages/, Settings/,
   ModelSelector/), `admin/`, `workspace/`, `layout/`, `common/`, `icons/`, etc.
 - `src/lib/stores/`, `src/lib/utils/`, `src/lib/i18n/` (60+ locales),
-  `src/lib/pyodide/`, `src/lib/workers/`.
+  `src/lib/pyodide/`, `src/lib/workers/`, `src/lib/runtime/`
+  (frontend device-runtime governors; e.g. `renderGovernor.ts` adapts the
+  QwythosStackBackground under FPS pressure).
 - Config: `svelte.config.js` (adapter-static), `vite.config.ts`,
   `i18next-parser.config.ts` (`npm run i18n:parse` regenerates locales).
 
