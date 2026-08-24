@@ -11,6 +11,12 @@ Newest entries first. Format:
 
 ---
 
+## 2026-08-24 — Railway Dockerfile VOLUME rejection
+- Railway Metal builder failed with `dockerfile invalid: docker VOLUME at Line 124 is not supported, use Railway Volumes`. Removed `VOLUME ["/app/backend/data"]` from the root `Dockerfile`. Left the `mkdir`/`chown` of that path and a comment that persistence is host-mounted (compose `-v` / Railway Volume), not a Dockerfile VOLUME.
+- `railway.json` already had `"volume": { "mountPath": "/app/backend/data" }`. Docs now warn that a volume staged at `/data` will not persist app state and must be remounted to `/app/backend/data` in the Railway dashboard — that remount is not something the repo can do.
+- Verified by: grep of `Dockerfile*` for `VOLUME` (none remaining); read of `docker-compose.yaml` (`qwythos:/app/backend/data` still present); `railway.json` mountPath unchanged.
+- Loose ends: did not touch the Railway project/service. If `chromium-qwythos-data` is still mounted at `/data`, the image will build but SQLite/uploads still land on ephemeral disk. No image rebuild was run locally.
+
 ## 2026-08-24 — Dead-code cleanup (corrected orphan counts vs docs/ORPHANAGE_SCAN.md)
 - `docs/ORPHANAGE_SCAN.md` claimed 37 dead Svelte components and 28 dead API functions. Both counts were produced by a `$lib/components/...`-alias-only grep that misses the dominant style inside the components tree itself: relative imports (`./Foo.svelte`). Proof: `admin/Settings/Connections.svelte` imports `AdminSettingRow`/`AdminSettingSection`/`AdminSettingField` via `./X.svelte` — all three were on the doc's dead list and are actively used.
 - Rebuilt the scan to resolve the full import graph: `$lib/...` alias, relative `./`/`../`, and dynamic `import(...)`, across every `.svelte`/`.ts`/`.js` file in `src`, not just the components directory. Cross-checked disputed results (icons, `common/Overlay`, `common/Selector`, `chat/MessageInput/Commands/{Models,Prompts}`) with targeted substring/whole-word greps before deleting anything.

@@ -56,8 +56,10 @@ The application stores ALL persistent data in `/app/backend/data/`. The SQLite d
    - Go to **Settings** tab
    - Scroll to **Volumes** section
    - Click **Add Volume**
-   - Set **Mount Path**: `/app/backend/data`
+   - Set **Mount Path**: `/app/backend/data` (not `/data` — that is a different directory; the app writes SQLite, uploads, and the secret key under `/app/backend/data`)
    - Click **Add**
+
+   Railway does not support `VOLUME` in the Dockerfile. Persistence has to come from this dashboard volume (or `railway.json`'s documented `volume.mountPath`). If a volume already exists at `/data`, remount it to `/app/backend/data` or chats and API keys will still vanish on restart.
 
 3. **Redeploy**
    - Railway will automatically redeploy with the volume attached
@@ -86,7 +88,7 @@ The `railway.json` in this repository includes the volume configuration:
 }
 ```
 
-> **Note:** The `volume` field in railway.json documents the requirement. You must still configure the volume in the Railway dashboard for it to take effect.
+> **Note:** The `volume` field in railway.json documents the required mount path. You must still attach the volume in the Railway dashboard. Do not add a Dockerfile `VOLUME` instruction — Railway's builder rejects it (`docker VOLUME ... is not supported, use Railway Volumes`).
 
 ---
 

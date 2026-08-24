@@ -132,7 +132,10 @@ the shortcut.
 - Python packaging: `pyproject.toml` (hatch, `hatch_build.py`), package `qwythos`,
   Python >=3.11 <3.13.
 - Docker: root `Dockerfile` + many `docker-compose.*.yaml` variants (gpu, amd,
-  api, data, otel, playwright, a1111-test). Makefile wraps compose.
+  api, data, otel, playwright, a1111-test). Makefile wraps compose. The
+  Dockerfile must not declare `VOLUME` — Railway's Metal builder rejects it;
+  persist `/app/backend/data` via compose/`docker run -v` or a Railway Volume
+  (see `docs/RAILWAY_DEPLOYMENT.md`, `railway.json`).
 - Workflows: `docker.yaml` (image publish), `release.yml`, `release-pypi.yml`,
   `issue-label.yaml`. Legacy Open WebUI format/lint PR checks (`backend.yaml`
   Python CI / Ruff, `frontend.yaml` Format & Build / Unit Tests, plus the

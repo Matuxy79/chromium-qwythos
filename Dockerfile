@@ -116,12 +116,12 @@ RUN set -e; \
     mkdir -p /app/backend/data; chown -R $UID:$GID /app/backend/data/; \
     rm -rf /var/lib/apt/lists/*;
 
-# Declare the data volume for persistence.
-# IMPORTANT: On Railway, you MUST configure a persistent volume at /app/backend/data
-# in the Railway dashboard (Settings → Volumes) or all data (API keys, chats, users)
-# will be lost on every deployment/restart.
-# For docker-compose, the volume is mounted via docker-compose.yaml.
-VOLUME ["/app/backend/data"]
+# Persistence is mounted by the host, not declared as a Docker VOLUME.
+# Railway's Metal builder rejects Dockerfile VOLUME instructions; attach a
+# Railway Volume at /app/backend/data instead (Settings → Volumes). docker-compose
+# mounts the same path via docker-compose.yaml. Without that mount, API keys,
+# chats, and users are lost on every restart.
+# Do not re-add: VOLUME ["/app/backend/data"]
 
 # Install Ollama if requested
 RUN if [ "$USE_OLLAMA" = "true" ]; then \
