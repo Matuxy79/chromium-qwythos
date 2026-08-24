@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { renderTier } from '$lib/runtime/renderGovernor';
+
 	const streams = [
 		{
 			id: 'claude',
@@ -80,7 +82,11 @@
 	] as const;
 </script>
 
-<div class="qwythos-stack" aria-hidden="true">
+<div
+	class="qwythos-stack"
+	class:qwythos-stack--static={$renderTier === 'static'}
+	aria-hidden="true"
+>
 	<div class="qwythos-stack__aurora"></div>
 
 	<svg viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" role="presentation">
@@ -129,13 +135,15 @@
 				<path class="stream__flow" d={stream.path}></path>
 				<circle class="stream__source" cx="720" cy="345" r="2.5"></circle>
 				<circle class="stream__runner" r="2.5">
-					<animateMotion
-						dur={`${8.5 + index * 0.7}s`}
-						begin={`${stream.delay}s`}
-						repeatCount="indefinite"
-					>
-						<mpath href={`#stack-stream-${stream.id}`}></mpath>
-					</animateMotion>
+					{#if $renderTier !== 'static'}
+						<animateMotion
+							dur={`${8.5 + index * 0.7}s`}
+							begin={`${stream.delay}s`}
+							repeatCount="indefinite"
+						>
+							<mpath href={`#stack-stream-${stream.id}`}></mpath>
+						</animateMotion>
+					{/if}
 				</circle>
 				<circle class="stream__terminal" cx={stream.labelX} cy={stream.labelY + 8} r="4"></circle>
 				<circle class="stream__terminal-ring" cx={stream.labelX} cy={stream.labelY + 8} r="10"
@@ -494,6 +502,20 @@
 		to {
 			transform: translate3d(72px, 48px, 0);
 		}
+	}
+
+	.qwythos-stack--static::before,
+	.qwythos-stack--static::after,
+	.qwythos-stack--static .qwythos-stack__aurora,
+	.qwythos-stack--static .orbit,
+	.qwythos-stack--static .stream__flow,
+	.qwythos-stack--static .stream__terminal,
+	.qwythos-stack--static .source-field__column,
+	.qwythos-stack--static .source-field__ring,
+	.qwythos-stack--static .hive__glow,
+	.qwythos-stack--static .hive__ring,
+	.qwythos-stack--static .hive__spark {
+		animation: none !important;
 	}
 
 	@media (max-width: 800px) {

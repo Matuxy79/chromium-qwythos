@@ -38,6 +38,7 @@
 		desktopEvent
 	} from '$lib/stores';
 	import { refreshChatList } from '$lib/stores/chatList';
+	import { startFrameGovernor } from '$lib/runtime/renderGovernor';
 	import { getFileContentById } from '$lib/apis/files';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
@@ -140,6 +141,7 @@
 	let pageWasHidden = false;
 	let lastVisibleAt = Date.now();
 	let disconnectReason = null;
+	let stopFrameGovernor = () => {};
 
 	const BREAKPOINT = 768;
 	const DISCONNECT_TOAST_DELAY_MS = 2000;
@@ -1028,6 +1030,7 @@
 	};
 
 	onMount(async () => {
+		stopFrameGovernor = startFrameGovernor();
 		const originalFetch = window.fetch.bind(window);
 		window.fetch = async (input, init) => {
 			const response = await originalFetch(input, init);
@@ -1354,6 +1357,7 @@
 	}
 
 	onDestroy(() => {
+		stopFrameGovernor();
 		bc.close();
 	});
 </script>
