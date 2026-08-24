@@ -175,9 +175,9 @@ from qwythos.routers import (
 )
 from qwythos.routers.retrieval import (
     get_ef,
-    get_embedding_function,
     get_reranking_function,
     get_rf,
+    rebuild_embedding_function,
 )
 from qwythos.socket.main import (
     MODELS,
@@ -762,52 +762,14 @@ async def initialize_runtime_config(app: FastAPI):
         app.state.rf = None
 
     rag_config = await Config.get_many(
-        'rag.embedding_engine',
-        'rag.embedding_model',
-        'rag.openai.api_base_url',
-        'rag.ollama.base_url',
-        'rag.azure_openai.base_url',
-        'rag.openai.api_key',
-        'rag.ollama.api_key',
-        'rag.azure_openai.api_key',
-        'rag.embedding_batch_size',
-        'rag.azure_openai.api_version',
-        'rag.enable_async_embedding',
-        'rag.embedding_concurrent_requests',
         'rag.reranking_engine',
         'rag.reranking_model',
         'rag.reranking_batch_size',
     )
-    embedding_engine = rag_config.get('rag.embedding_engine')
-    app.state.EMBEDDING_FUNCTION = get_embedding_function(
-        embedding_engine,
-        rag_config.get('rag.embedding_model'),
-        embedding_function=app.state.ef,
-        url=(
-            rag_config.get('rag.openai.api_base_url')
-            if embedding_engine == 'openai'
-            else (
-                rag_config.get('rag.ollama.base_url')
-                if embedding_engine == 'ollama'
-                else rag_config.get('rag.azure_openai.base_url')
-            )
-        ),
-        key=(
-            rag_config.get('rag.openai.api_key')
-            if embedding_engine == 'openai'
-            else (
-                rag_config.get('rag.ollama.api_key')
-                if embedding_engine == 'ollama'
-                else rag_config.get('rag.azure_openai.api_key')
-            )
-        ),
-        embedding_batch_size=rag_config.get('rag.embedding_batch_size'),
-        azure_api_version=(
-            rag_config.get('rag.azure_openai.api_version') if embedding_engine == 'azure_openai' else None
-        ),
-        enable_async=rag_config.get('rag.enable_async_embedding'),
-        concurrent_requests=rag_config.get('rag.embedding_concurrent_requests'),
-    )
+    try:
+        await rebuild_embedding_function(app)
+    except Exception as e:
+        log.error(f'Error initializing embedding function: {e}')
 
     app.state.RERANKING_FUNCTION = get_reranking_function(
         rag_config.get('rag.reranking_engine'),

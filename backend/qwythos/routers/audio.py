@@ -55,6 +55,12 @@ from qwythos.utils.access_control import has_permission
 from qwythos.utils.auth import get_admin_user, get_verified_user
 from qwythos.utils.headers import include_user_info_headers
 from qwythos.utils.misc import strict_match_mime_type
+from qwythos.utils.openrouter import (
+    display_feature_credentials,
+    get_resolved_openai_compatible,
+    is_openrouter_configured,
+    with_openrouter_headers,
+)
 from qwythos.utils.session_pool import get_session
 
 log = logging.getLogger(__name__)
@@ -250,9 +256,19 @@ class AudioConfigUpdateForm(BaseModel):
 
 @router.get('/config')
 async def get_audio_config(request: Request, user=Depends(get_admin_user)):
+    tts = await get_config_values(TTS_CONFIG_KEYS)
+    stt = await get_config_values(STT_CONFIG_KEYS)
+    tts_url, tts_key = display_feature_credentials(tts.get('OPENAI_API_BASE_URL'), tts.get('OPENAI_API_KEY'))
+    stt_url, stt_key = display_feature_credentials(stt.get('OPENAI_API_BASE_URL'), stt.get('OPENAI_API_KEY'))
+    tts['OPENAI_API_BASE_URL'] = tts_url
+    tts['OPENAI_API_KEY'] = tts_key
+    stt['OPENAI_API_BASE_URL'] = stt_url
+    stt['OPENAI_API_KEY'] = stt_key
+    inherits = await is_openrouter_configured()
     return {
-        'tts': await get_config_values(TTS_CONFIG_KEYS),
-        'stt': await get_config_values(STT_CONFIG_KEYS),
+        'tts': tts,
+        'stt': stt,
+        'inherits_openrouter': inherits,
     }
 
 
@@ -319,13 +335,18 @@ async def _tts_openai(request, payload, file_path, file_body_path, user):
     if not payload.get('voice'):
         payload['voice'] = await Config.get('audio.tts.voice')
     payload = {**payload, **(await Config.get('audio.tts.openai.params') or {})}
-    api_key = await Config.get('audio.tts.openai.api_key')
-    api_base_url = await Config.get('audio.tts.openai.api_base_url')
+    api_base_url, api_key = await get_resolved_openai_compatible(
+        await Config.get('audio.tts.openai.api_base_url'),
+        await Config.get('audio.tts.openai.api_key'),
+    )
 
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {api_key}',
-    }
+    headers = with_openrouter_headers(
+        {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}',
+        },
+        api_base_url,
+    )
     if ENABLE_FORWARD_USER_INFO_HEADERS:
         headers = include_user_info_headers(headers, user)
 
@@ -539,11 +560,13 @@ async def _transcribe_openai(request, file_path, filename, languages, file_dir, 
     r = None
     try:
         session = await get_session()
-        api_key = await Config.get('audio.stt.openai.api_key')
-        api_base_url = await Config.get('audio.stt.openai.api_base_url')
+        api_base_url, api_key = await get_resolved_openai_compatible(
+            await Config.get('audio.stt.openai.api_base_url'),
+            await Config.get('audio.stt.openai.api_key'),
+        )
         request_format = (await Config.get('audio.stt.openai.api_request_format') or 'multipart').lower()
 
-        headers = {'Authorization': f'Bearer {api_key}'}
+        headers = with_openrouter_headers({'Authorization': f'Bearer {api_key}'}, api_base_url)
         if user and ENABLE_FORWARD_USER_INFO_HEADERS:
             headers = include_user_info_headers(headers, user)
 

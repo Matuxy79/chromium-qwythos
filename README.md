@@ -1,6 +1,6 @@
 # Qwythos 👋
 
-![Version](https://img.shields.io/badge/version-0.11.0-f97316)
+![Version](https://img.shields.io/badge/version-0.12.0-f97316)
 ![Frontend](https://img.shields.io/badge/frontend-SvelteKit-19c2d8)
 ![Backend](https://img.shields.io/badge/backend-FastAPI-0d9488)
 ![Repository](https://img.shields.io/badge/repository-private-374151)
@@ -24,7 +24,7 @@ Start with the [architecture guide](./docs/ARCHITECTURE.md),
 
 - 🚀 **Effortless Setup**: Install seamlessly via pip, uv, Docker, or Kubernetes (kubectl, kustomize, or helm), with `:ollama` and `:cuda` tagged images available for container deployments.
 
-- 🤝 **Broad Model & API Integration**: Connect any OpenAI-compatible API alongside local Ollama models. Point the API URL at **LMStudio, GroqCloud, Mistral, OpenRouter, vLLM, and more** to mix and match providers freely.
+- 🤝 **Broad Model & API Integration**: Paste one **OpenRouter** key for chat, embeddings, speech, and images. Additional OpenAI-compatible APIs and local Ollama models remain available under Connections → Advanced.
 
 - 🔐 **Granular RBAC & User Groups**: Administrators define detailed roles, groups, and permissions, giving each user exactly the access they need. Secure by default, with tailored experiences per group.
 

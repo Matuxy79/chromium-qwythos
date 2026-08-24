@@ -62,6 +62,7 @@
 	let STT_MISTRAL_API_KEY = '';
 	let STT_MISTRAL_API_BASE_URL = '';
 	let STT_MISTRAL_USE_CHAT_COMPLETIONS = false;
+	let inheritsOpenRouter = false;
 
 	let STT_WHISPER_MODEL_LOADING = false;
 
@@ -196,6 +197,7 @@
 
 		if (res) {
 			console.log(res);
+			inheritsOpenRouter = res.inherits_openrouter ?? false;
 			TTS_OPENAI_API_BASE_URL = res.tts.OPENAI_API_BASE_URL;
 			TTS_OPENAI_API_KEY = res.tts.OPENAI_API_KEY;
 			TTS_OPENAI_PARAMS = JSON.stringify(res?.tts?.OPENAI_PARAMS ?? '', null, 2);
@@ -276,13 +278,22 @@
 			{/if}
 
 			{#if STT_ENGINE === 'openai'}
+				{#if inheritsOpenRouter && !STT_OPENAI_API_KEY}
+					<p class="text-[0.6875rem] text-gray-400 dark:text-gray-600">
+						{$i18n.t(
+							'Using your OpenRouter key. Leave blank to keep inheriting, or set an override.'
+						)}
+					</p>
+				{/if}
 				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 					<AdminSettingField label={$i18n.t('API Base URL')}>
 						<input
 							class={inputClass}
-							placeholder={$i18n.t('API Base URL')}
+							placeholder={inheritsOpenRouter
+								? 'https://openrouter.ai/api/v1'
+								: $i18n.t('API Base URL')}
 							bind:value={STT_OPENAI_API_BASE_URL}
-							required
+							required={!inheritsOpenRouter}
 						/>
 					</AdminSettingField>
 					<AdminSettingField label={$i18n.t('API Key')}>
@@ -506,13 +517,22 @@
 			</AdminSettingRow>
 
 			{#if TTS_ENGINE === 'openai'}
+				{#if inheritsOpenRouter && !TTS_OPENAI_API_KEY}
+					<p class="text-[0.6875rem] text-gray-400 dark:text-gray-600">
+						{$i18n.t(
+							'Using your OpenRouter key. Leave blank to keep inheriting, or set an override.'
+						)}
+					</p>
+				{/if}
 				<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 					<AdminSettingField label={$i18n.t('API Base URL')}>
 						<input
 							class={inputClass}
-							placeholder={$i18n.t('API Base URL')}
+							placeholder={inheritsOpenRouter
+								? 'https://openrouter.ai/api/v1'
+								: $i18n.t('API Base URL')}
 							bind:value={TTS_OPENAI_API_BASE_URL}
-							required
+							required={!inheritsOpenRouter}
 						/>
 					</AdminSettingField>
 					<AdminSettingField label={$i18n.t('API Key')}>

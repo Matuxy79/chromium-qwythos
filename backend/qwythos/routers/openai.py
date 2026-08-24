@@ -49,6 +49,12 @@ from qwythos.utils.misc import (
     convert_logit_bias_input_to_json,
     stream_chunks_handler,
 )
+from qwythos.utils.openrouter import (
+    OPENROUTER_DEFAULT_BASE_URL,
+    ensure_openrouter_openai_connection,
+    openai_compatible_connection_index,
+    openrouter_attribution_headers,
+)
 from qwythos.utils.payload import (
     apply_model_params_to_body_openai,
     apply_system_prompt_to_body,
@@ -164,14 +170,7 @@ async def get_headers_and_cookies(
     cookies = {}
     headers = {
         'Content-Type': 'application/json',
-        **(
-            {
-                'HTTP-Referer': 'https://qwythos.com/',
-                'X-Title': 'Qwythos',
-            }
-            if 'openrouter.ai' in url
-            else {}
-        ),
+        **openrouter_attribution_headers(url),
     }
 
     if ENABLE_FORWARD_USER_INFO_HEADERS and user:
@@ -269,6 +268,8 @@ OPENAI_CONFIG_KEYS = {
     'OPENAI_API_BASE_URLS': 'openai.api_base_urls',
     'OPENAI_API_KEYS': 'openai.api_keys',
     'OPENAI_API_CONFIGS': 'openai.api_configs',
+    'OPENROUTER_API_KEY': 'openrouter.api_key',
+    'OPENROUTER_API_BASE_URL': 'openrouter.base_url',
 }
 
 
@@ -399,6 +400,19 @@ class OpenAIConfigForm(BaseModel):
     OPENAI_API_BASE_URLS: list[str]
     OPENAI_API_KEYS: list[str]
     OPENAI_API_CONFIGS: dict
+    OPENROUTER_API_KEY: str | None = None
+    OPENROUTER_API_BASE_URL: str | None = None
+
+
+async def _flush_openai_models(request: Request) -> None:
+    await get_all_models.cache.clear()
+    request.app.state.BASE_MODELS = []
+    request.app.state.OPENAI_MODELS = {}
+    models = getattr(request.app.state, 'MODELS', None)
+    if hasattr(models, 'clear'):
+        models.clear()
+    else:
+        request.app.state.MODELS = {}
 
 
 @router.post('/config/update')
@@ -413,23 +427,28 @@ async def update_config(request: Request, form_data: OpenAIConfigForm, user=Depe
     valid_keys = set(map(str, range(len(form_data.OPENAI_API_BASE_URLS))))
     api_configs = {key: value for key, value in form_data.OPENAI_API_CONFIGS.items() if key in valid_keys}
 
-    await Config.upsert(
-        {
-            'openai.enable': form_data.ENABLE_OPENAI_API,
-            'openai.api_base_urls': form_data.OPENAI_API_BASE_URLS,
-            'openai.api_keys': api_keys,
-            'openai.api_configs': api_configs,
-        }
-    )
+    updates = {
+        'openai.enable': form_data.ENABLE_OPENAI_API,
+        'openai.api_base_urls': form_data.OPENAI_API_BASE_URLS,
+        'openai.api_keys': api_keys,
+        'openai.api_configs': api_configs,
+    }
+    if form_data.OPENROUTER_API_KEY is not None:
+        updates['openrouter.api_key'] = form_data.OPENROUTER_API_KEY.strip()
+    if form_data.OPENROUTER_API_BASE_URL is not None:
+        base_url = form_data.OPENROUTER_API_BASE_URL.strip().rstrip('/')
+        updates['openrouter.base_url'] = base_url or OPENROUTER_DEFAULT_BASE_URL
 
-    await get_all_models.cache.clear()
-    request.app.state.BASE_MODELS = []
-    request.app.state.OPENAI_MODELS = {}
-    models = getattr(request.app.state, 'MODELS', None)
-    if hasattr(models, 'clear'):
-        models.clear()
-    else:
-        request.app.state.MODELS = {}
+    await Config.upsert(updates)
+    await ensure_openrouter_openai_connection()
+
+    await _flush_openai_models(request)
+    try:
+        from qwythos.routers.retrieval import rebuild_embedding_function
+
+        await rebuild_embedding_function(request.app, openai_only=True)
+    except Exception:
+        log.exception('Failed to rebuild embedding function after OpenRouter/OpenAI config update')
 
     await publish_event(
         request,
@@ -444,12 +463,7 @@ async def update_config(request: Request, form_data: OpenAIConfigForm, user=Depe
         },
     )
 
-    return {
-        'ENABLE_OPENAI_API': form_data.ENABLE_OPENAI_API,
-        'OPENAI_API_BASE_URLS': form_data.OPENAI_API_BASE_URLS,
-        'OPENAI_API_KEYS': api_keys,
-        'OPENAI_API_CONFIGS': api_configs,
-    }
+    return await get_openai_config()
 
 
 @router.post('/audio/speech')
@@ -463,7 +477,8 @@ async def speech(request: Request, user=Depends(get_verified_user)):
     idx = None
     try:
         _, api_base_urls, _, _ = await get_openai_runtime_config()
-        idx = api_base_urls.index('https://api.openai.com/v1')
+        preferred = (await Config.get('openrouter.base_url')) or OPENROUTER_DEFAULT_BASE_URL
+        idx = openai_compatible_connection_index(api_base_urls, preferred)
 
         body = await request.body()
         name = hashlib.sha256(body).hexdigest()

@@ -51,6 +51,7 @@ from qwythos.utils.access_control.files import get_owner_accessible_folder_files
 from qwythos.utils.access_control.folders import has_folder_access
 from qwythos.utils.headers import include_user_info_headers
 from qwythos.utils.misc import get_content_from_message, get_message_list
+from qwythos.utils.openrouter import with_openrouter_headers
 
 log = logging.getLogger(__name__)
 
@@ -877,6 +878,7 @@ def generate_openai_batch_embeddings(
     }
     if ENABLE_FORWARD_USER_INFO_HEADERS and user:
         headers = include_user_info_headers(headers, user)
+    headers = with_openrouter_headers(headers, url)
 
     r = requests.post(
         f'{url}/embeddings',
@@ -910,6 +912,7 @@ async def agenerate_openai_batch_embeddings(
     }
     if ENABLE_FORWARD_USER_INFO_HEADERS and user:
         headers = include_user_info_headers(headers, user)
+    headers = with_openrouter_headers(headers, url)
 
     async with aiohttp.ClientSession(
         trust_env=True, timeout=aiohttp.ClientTimeout(total=AIOHTTP_CLIENT_TIMEOUT)

@@ -38,6 +38,7 @@
 	let email = '';
 	let password = '';
 	let confirmPassword = '';
+	let openrouterApiKey = '';
 
 	let ldapUsername = '';
 
@@ -126,12 +127,16 @@
 			}
 		}
 
-		const sessionUser = await userSignUp(name, email, password, generateInitialsImage(name)).catch(
-			(error) => {
-				toast.error(`${error}`);
-				return null;
-			}
-		);
+		const sessionUser = await userSignUp(
+			name,
+			email,
+			password,
+			generateInitialsImage(name),
+			($config?.onboarding ?? false) ? openrouterApiKey : ''
+		).catch((error) => {
+			toast.error(`${error}`);
+			return null;
+		});
 
 		await setSessionUser(sessionUser);
 	};
@@ -360,9 +365,8 @@
 
 													{#if $config?.onboarding ?? false}
 														<p>
-															{$WEBUI_NAME}
 															{$i18n.t(
-																'does not make any external connections, and your data stays securely on your locally hosted server.'
+																'Paste your OpenRouter API key to connect chat, embeddings, speech, and images. You can add other providers later in Connections.'
 															)}
 														</p>
 													{/if}
@@ -460,6 +464,27 @@
 																	name="confirm-password"
 																	screenReader={false}
 																	required
+																/>
+															</div>
+														{/if}
+
+														{#if ($config?.onboarding ?? false) && mode === 'signup'}
+															<div class="chromium-auth__field">
+																<label for="openrouter-api-key" class="chromium-auth__label"
+																	>{$i18n.t('OpenRouter API Key')}</label
+																>
+																<SensitiveInput
+																	bind:value={openrouterApiKey}
+																	type="password"
+																	id="openrouter-api-key"
+																	outerClassName="chromium-auth__sensitive-shell"
+																	inputClassName="chromium-auth__sensitive-input"
+																	showButtonClassName="chromium-auth__sensitive-toggle"
+																	placeholder="sk-or-..."
+																	autocomplete="off"
+																	name="openrouter-api-key"
+																	screenReader={false}
+																	required={false}
 																/>
 															</div>
 														{/if}

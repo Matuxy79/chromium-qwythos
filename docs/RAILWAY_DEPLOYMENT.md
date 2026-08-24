@@ -154,6 +154,7 @@ S3_ENDPOINT_URL=https://your-endpoint-url
 |----------|-------------|---------|
 | `DATA_DIR` | Path to data directory | `/app/backend/data` |
 | `DATABASE_URL` | Database connection string | `sqlite:///app/backend/data/webui.db` |
+| `OPENROUTER_API_KEY` | Production LLM key (chat, embeddings, speech, images) | Preferred over pasting keys only in the UI |
 | `WEBUI_SECRET_KEY` | JWT secret (auto-generated if using volume) | Required if no volume |
 | `WEBUI_SECRET_KEY_FILE` | Path to persist secret key | `/app/backend/data/.webui_secret_key` |
 
@@ -167,7 +168,7 @@ S3_ENDPOINT_URL=https://your-endpoint-url
 
 **Cause:** No persistent volume configured. The SQLite database is recreated empty on each deployment.
 
-**Fix:** Add a volume at `/app/backend/data` in Railway dashboard.
+**Fix:** Add a volume at `/app/backend/data` in Railway dashboard. You can also set `OPENROUTER_API_KEY` as a Railway environment variable so the production key survives even if the database is recreated; user accounts and chats still need the volume.
 
 ### "Permission denied" Errors on Data Directory
 

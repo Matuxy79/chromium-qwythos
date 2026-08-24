@@ -82,6 +82,7 @@ class SignupForm(BaseModel):
     email: str
     password: str
     profile_image_url: str | None = '/user.png'
+    openrouter_api_key: str | None = None
 
     @field_validator('profile_image_url')
     @classmethod

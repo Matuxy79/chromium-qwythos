@@ -205,6 +205,8 @@ The important implementation split is:
 3. [`utils/chat.py`](../backend/qwythos/utils/chat.py) dispatches to direct connections, function/pipe models, Ollama, or the OpenAI-compatible router.
 4. [`routers/ollama.py`](../backend/qwythos/routers/ollama.py) and [`routers/openai.py`](../backend/qwythos/routers/openai.py) perform upstream provider communication.
 
+From 0.12, the default OpenAI-compatible provider is OpenRouter. Chat connections, embeddings, speech, and images share `openrouter.api_key` via [`utils/openrouter.py`](../backend/qwythos/utils/openrouter.py). Per-feature URL+key fields are optional overrides. See the [provider credentials section](CODEBASE_MAP.md#provider-credentials-openrouter-v012) in the codebase map.
+
 For normal UI chats with a `session_id` and `chat_id`, the endpoint creates background task(s), returns task IDs, and publishes progress/completion through Socket.IO while updating the chat database. For legacy or direct API requests without that UI session metadata, streaming stays on the HTTP response as SSE or NDJSON. Socket.IO therefore is not the only response transport, and HTTP streaming is not the only UI update path.
 
 Multi-model fan-out and the subagent implementation are in-process capabilities, not separately deployed services. Subagent execution lives in [`utils/subagents.py`](../backend/qwythos/utils/subagents.py) and reuses the same chat pipeline.

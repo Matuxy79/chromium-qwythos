@@ -43,6 +43,12 @@ from qwythos.utils.images.comfyui import (
     comfyui_edit_image,
     comfyui_upload_image,
 )
+from qwythos.utils.openrouter import (
+    display_feature_credentials,
+    get_resolved_openai_compatible,
+    is_openrouter_configured,
+    with_openrouter_headers,
+)
 from qwythos.utils.session_pool import get_session
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,8 +113,39 @@ async def get_config_values(key_map: dict[str, str]) -> dict:
     return {field: values[storage_key] for field, storage_key in key_map.items() if storage_key in values}
 
 
+async def get_admin_image_config_values() -> dict:
+    values = await get_config_values(IMAGE_CONFIG_KEYS)
+    gen_url, gen_key = display_feature_credentials(
+        values.get('IMAGES_OPENAI_API_BASE_URL'),
+        values.get('IMAGES_OPENAI_API_KEY'),
+    )
+    edit_url, edit_key = display_feature_credentials(
+        values.get('IMAGES_EDIT_OPENAI_API_BASE_URL'),
+        values.get('IMAGES_EDIT_OPENAI_API_KEY'),
+    )
+    values['IMAGES_OPENAI_API_BASE_URL'] = gen_url
+    values['IMAGES_OPENAI_API_KEY'] = gen_key
+    values['IMAGES_EDIT_OPENAI_API_BASE_URL'] = edit_url
+    values['IMAGES_EDIT_OPENAI_API_KEY'] = edit_key
+    values['INHERITS_OPENROUTER'] = await is_openrouter_configured() and not gen_key
+    return values
+
+
 async def get_image_config() -> SimpleNamespace:
-    return SimpleNamespace(**await get_config_values(IMAGE_CONFIG_KEYS))
+    values = await get_config_values(IMAGE_CONFIG_KEYS)
+    gen_url, gen_key = await get_resolved_openai_compatible(
+        values.get('IMAGES_OPENAI_API_BASE_URL'),
+        values.get('IMAGES_OPENAI_API_KEY'),
+    )
+    edit_url, edit_key = await get_resolved_openai_compatible(
+        values.get('IMAGES_EDIT_OPENAI_API_BASE_URL'),
+        values.get('IMAGES_EDIT_OPENAI_API_KEY'),
+    )
+    values['IMAGES_OPENAI_API_BASE_URL'] = gen_url
+    values['IMAGES_OPENAI_API_KEY'] = gen_key
+    values['IMAGES_EDIT_OPENAI_API_BASE_URL'] = edit_url
+    values['IMAGES_EDIT_OPENAI_API_KEY'] = edit_key
+    return SimpleNamespace(**values)
 
 
 def config_updates(data: dict, key_map: dict[str, str]) -> dict:
@@ -266,11 +303,12 @@ class ImagesConfig(BaseModel):
     IMAGES_EDIT_COMFYUI_API_KEY: str
     IMAGES_EDIT_COMFYUI_WORKFLOW: str
     IMAGES_EDIT_COMFYUI_WORKFLOW_NODES: list[dict]
+    INHERITS_OPENROUTER: bool = False
 
 
 @router.get('/config', response_model=ImagesConfig)
 async def get_config(request: Request, user=Depends(get_admin_user)):
-    return await get_config_values(IMAGE_CONFIG_KEYS)
+    return await get_admin_image_config_values()
 
 
 @router.post('/config/update')
@@ -303,7 +341,7 @@ async def update_config(request: Request, form_data: ImagesConfig, user=Depends(
     updates['images.edit.comfyui.base_url'] = form_data.IMAGES_EDIT_COMFYUI_BASE_URL.strip('/')
     await Config.upsert(updates)
     await set_image_model(request, form_data.IMAGE_GENERATION_MODEL)
-    values = await get_config_values(IMAGE_CONFIG_KEYS)
+    values = await get_admin_image_config_values()
     await publish_event(
         request,
         EVENTS.CONFIG_UPDATED,
@@ -615,10 +653,13 @@ async def image_generations(
 
     try:
         if image_config.IMAGE_GENERATION_ENGINE == 'openai':
-            headers = {
-                'Authorization': f'Bearer {image_config.IMAGES_OPENAI_API_KEY}',
-                'Content-Type': 'application/json',
-            }
+            headers = with_openrouter_headers(
+                {
+                    'Authorization': f'Bearer {image_config.IMAGES_OPENAI_API_KEY}',
+                    'Content-Type': 'application/json',
+                },
+                image_config.IMAGES_OPENAI_API_BASE_URL,
+            )
 
             if ENABLE_FORWARD_USER_INFO_HEADERS:
                 headers = include_user_info_headers(headers, user)
@@ -965,9 +1006,12 @@ async def image_edits(
 
     try:
         if image_config.IMAGE_EDIT_ENGINE == 'openai':
-            headers = {
-                'Authorization': f'Bearer {image_config.IMAGES_EDIT_OPENAI_API_KEY}',
-            }
+            headers = with_openrouter_headers(
+                {
+                    'Authorization': f'Bearer {image_config.IMAGES_EDIT_OPENAI_API_KEY}',
+                },
+                image_config.IMAGES_EDIT_OPENAI_API_BASE_URL,
+            )
 
             if ENABLE_FORWARD_USER_INFO_HEADERS:
                 headers = include_user_info_headers(headers, user)

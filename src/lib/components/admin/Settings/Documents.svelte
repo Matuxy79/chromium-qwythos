@@ -53,6 +53,7 @@
 
 	let OpenAIUrl = '';
 	let OpenAIKey = '';
+	let inheritsOpenRouter = false;
 
 	let AzureOpenAIUrl = '';
 	let AzureOpenAIKey = '';
@@ -301,6 +302,7 @@
 
 			OpenAIKey = embeddingConfig.openai_config.key;
 			OpenAIUrl = embeddingConfig.openai_config.url;
+			inheritsOpenRouter = embeddingConfig.inherits_openrouter ?? false;
 
 			OllamaKey = embeddingConfig.ollama_config.key;
 			OllamaUrl = embeddingConfig.ollama_config.url;
@@ -980,6 +982,13 @@
 					</AdminSettingRow>
 
 					{#if RAG_EMBEDDING_ENGINE === 'openai'}
+						{#if inheritsOpenRouter && !OpenAIKey}
+							<p class="text-[0.6875rem] text-gray-400 dark:text-gray-600">
+								{$i18n.t(
+									'Using your OpenRouter key. Leave blank to keep inheriting, or set an override.'
+								)}
+							</p>
+						{/if}
 						<div class="grid grid-cols-1 gap-x-3 gap-y-2.5 sm:grid-cols-2">
 							<AdminSettingField
 								label={$i18n.t('API Base URL')}
@@ -987,9 +996,11 @@
 							>
 								<input
 									class={inputClass}
-									placeholder={$i18n.t('API Base URL')}
+									placeholder={inheritsOpenRouter
+										? 'https://openrouter.ai/api/v1'
+										: $i18n.t('API Base URL')}
 									bind:value={OpenAIUrl}
-									required
+									required={!inheritsOpenRouter}
 								/>
 							</AdminSettingField>
 							<AdminSettingField

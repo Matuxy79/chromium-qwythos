@@ -121,7 +121,11 @@
 			config.ENABLE_IMAGE_GENERATION = false;
 
 			return null;
-		} else if (config.IMAGE_GENERATION_ENGINE === 'openai' && config.IMAGES_OPENAI_API_KEY === '') {
+		} else if (
+			config.IMAGE_GENERATION_ENGINE === 'openai' &&
+			config.IMAGES_OPENAI_API_KEY === '' &&
+			!config.INHERITS_OPENROUTER
+		) {
 			toast.error($i18n.t('OpenAI API Key is required.'));
 			config.ENABLE_IMAGE_GENERATION = false;
 
@@ -380,11 +384,20 @@
 					{/if}
 
 					{#if config?.IMAGE_GENERATION_ENGINE === 'openai'}
+						{#if config.INHERITS_OPENROUTER && !config.IMAGES_OPENAI_API_KEY}
+							<p class="text-[0.6875rem] text-gray-400 dark:text-gray-600">
+								{$i18n.t(
+									'Using your OpenRouter key. Leave blank to keep inheriting, or set an override.'
+								)}
+							</p>
+						{/if}
 						<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 							<AdminSettingField label={$i18n.t('API Base URL')}>
 								<input
 									class={inputClass}
-									placeholder={$i18n.t('API Base URL')}
+									placeholder={config.INHERITS_OPENROUTER
+										? 'https://openrouter.ai/api/v1'
+										: $i18n.t('API Base URL')}
 									bind:value={config.IMAGES_OPENAI_API_BASE_URL}
 								/>
 							</AdminSettingField>
@@ -760,11 +773,20 @@
 					{/if}
 
 					{#if config?.IMAGE_EDIT_ENGINE === 'openai'}
+						{#if config.INHERITS_OPENROUTER && !config.IMAGES_EDIT_OPENAI_API_KEY}
+							<p class="text-[0.6875rem] text-gray-400 dark:text-gray-600">
+								{$i18n.t(
+									'Using your OpenRouter key. Leave blank to keep inheriting, or set an override.'
+								)}
+							</p>
+						{/if}
 						<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
 							<AdminSettingField label={$i18n.t('API Base URL')}>
 								<input
 									class={inputClass}
-									placeholder={$i18n.t('API Base URL')}
+									placeholder={config.INHERITS_OPENROUTER
+										? 'https://openrouter.ai/api/v1'
+										: $i18n.t('API Base URL')}
 									bind:value={config.IMAGES_EDIT_OPENAI_API_BASE_URL}
 								/>
 							</AdminSettingField>

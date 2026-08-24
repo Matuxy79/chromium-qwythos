@@ -11,6 +11,15 @@ Newest entries first. Format:
 
 ---
 
+## 2026-08-24 — v0.12 OpenRouter consolidation
+- Added `openrouter.api_key` / `openrouter.base_url` (env `OPENROUTER_API_KEY`) as the production provider. One resolver in `utils/openrouter.py` is used by RAG embeddings, audio STT/TTS, and image gen/edit when those features have no explicit override.
+- Seed/sync keeps `openai.api_base_urls` aligned with that key; existing OpenRouter chat connections are hydrated into `openrouter.*` on upgrade.
+- Stopped config.py from forcing `OPENAI_API_BASE_URL` back to `https://api.openai.com/v1`, which had emptied every per-feature default on OpenRouter-only deploys. `/openai/audio/speech` no longer requires that URL in the connection list.
+- Frontend: Connections shows the OpenRouter key first and folds extra OpenAI/Ollama editors under Advanced. First-run signup can paste the key. Documents/Audio/Images inherit instead of requiring a duplicate key.
+- Bumped version to 0.12.0.
+- Verified by: `python3 test/test_openrouter_credentials.py`; `python3 -c` import of config + openrouter helpers; `python3 -m py_compile` on touched backend modules.
+- Loose ends: web-search provider keys and Ollama remain separate (not OpenAI-compatible). Anthropic token counting still does not trigger for OpenRouter-hosted Anthropic IDs. Did not run the full frontend/backend app in a browser.
+
 ## 2026-08-17 — Open WebUI remnants & disconnected artifacts audit
 - Read-only audit (no code changes) mapping all leftover upstream artifacts.
 - Found: `WEBUI_*` env vars (inherited API, keep), upstream author in
