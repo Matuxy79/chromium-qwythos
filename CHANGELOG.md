@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-08-24
+
+### Added
+
+- **OpenRouter as the production provider.** A single `openrouter.api_key` (env `OPENROUTER_API_KEY`, first-run signup, or Admin → Connections) now covers chat, embeddings, speech, and images. Extra OpenAI-compatible and Ollama connections stay under Connections → Advanced.
+
+### Changed
+
+- RAG, audio STT/TTS, and image generation/edit inherit the OpenRouter key at runtime when their own URL+key fields are left blank, instead of each asking for a separate endpoint.
+- `/openai/audio/speech` uses the OpenRouter (or first configured) connection instead of requiring a hardcoded `https://api.openai.com/v1` index.
+- Feature admin forms show an inherit hint and no longer require a duplicate API key when OpenRouter is configured.
+
+### Fixed
+
+- OpenRouter-only deployments no longer have RAG, audio, and images defaulted to `https://api.openai.com/v1` with an empty key. That came from config.py forcing the canonical OpenAI-compatible URL back to api.openai.com after parsing env.
+
 ## [0.11.0] - 2026-07-27
 
 ### Added

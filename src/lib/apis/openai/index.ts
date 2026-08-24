@@ -37,6 +37,8 @@ type OpenAIConfig = {
 	OPENAI_API_BASE_URLS: string[];
 	OPENAI_API_KEYS: string[];
 	OPENAI_API_CONFIGS: object;
+	OPENROUTER_API_KEY?: string;
+	OPENROUTER_API_BASE_URL?: string;
 };
 
 export const updateOpenAIConfig = async (token: string = '', config: OpenAIConfig) => {

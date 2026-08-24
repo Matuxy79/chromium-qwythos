@@ -75,6 +75,7 @@ from qwythos.utils.auth import (
 )
 from qwythos.utils.groups import apply_default_group_assignment
 from qwythos.utils.misc import parse_duration, validate_email_format
+from qwythos.utils.openrouter import set_openrouter_api_key
 from qwythos.utils.rate_limit import RateLimiter
 from qwythos.utils.redis import get_redis_client
 from pydantic import BaseModel
@@ -923,6 +924,14 @@ async def signup(
             form_data.profile_image_url,
             db=db,
         )
+        if not has_users and (form_data.openrouter_api_key or '').strip():
+            await set_openrouter_api_key(form_data.openrouter_api_key)
+            try:
+                from qwythos.routers.retrieval import rebuild_embedding_function
+
+                await rebuild_embedding_function(request.app, openai_only=True)
+            except Exception:
+                log.exception('Failed to rebuild embedding function after onboarding OpenRouter key')
         await publish_event(
             request,
             EVENTS.AUTH_SIGNUP,

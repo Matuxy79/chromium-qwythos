@@ -114,6 +114,11 @@ from qwythos.utils.misc import (
     calculate_sha256_string,
     sanitize_text_for_db,
 )
+from qwythos.utils.openrouter import (
+    display_feature_credentials,
+    get_resolved_openai_compatible,
+    is_openrouter_configured,
+)
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -378,6 +383,44 @@ async def get_retrieval_config() -> RetrievalConfig:
     return RetrievalConfig(await get_config_values(RETRIEVAL_CONFIG_KEYS))
 
 
+async def resolved_rag_openai_credentials(config: RetrievalConfig) -> tuple[str, str]:
+    if config.RAG_EMBEDDING_ENGINE != 'openai':
+        url = (
+            config.RAG_OLLAMA_BASE_URL
+            if config.RAG_EMBEDDING_ENGINE == 'ollama'
+            else config.RAG_AZURE_OPENAI_BASE_URL
+        )
+        key = (
+            config.RAG_OLLAMA_API_KEY
+            if config.RAG_EMBEDDING_ENGINE == 'ollama'
+            else config.RAG_AZURE_OPENAI_API_KEY
+        )
+        return url, key
+    return await get_resolved_openai_compatible(config.RAG_OPENAI_API_BASE_URL, config.RAG_OPENAI_API_KEY)
+
+
+async def rebuild_embedding_function(app, *, openai_only: bool = False) -> None:
+    """Rebuild app.state.EMBEDDING_FUNCTION from current config, resolving OpenRouter."""
+    config = await get_retrieval_config()
+    if openai_only and config.RAG_EMBEDDING_ENGINE != 'openai':
+        return
+    url, key = await resolved_rag_openai_credentials(config)
+    app.state.ef = get_ef(config.RAG_EMBEDDING_ENGINE, config.RAG_EMBEDDING_MODEL)
+    app.state.EMBEDDING_FUNCTION = get_embedding_function(
+        config.RAG_EMBEDDING_ENGINE,
+        config.RAG_EMBEDDING_MODEL,
+        app.state.ef,
+        url,
+        key,
+        config.RAG_EMBEDDING_BATCH_SIZE,
+        azure_api_version=(
+            config.RAG_AZURE_OPENAI_API_VERSION if config.RAG_EMBEDDING_ENGINE == 'azure_openai' else None
+        ),
+        enable_async=config.ENABLE_ASYNC_EMBEDDING,
+        concurrent_requests=config.RAG_EMBEDDING_CONCURRENT_REQUESTS,
+    )
+
+
 class CollectionNameForm(BaseModel):
     collection_name: str | None = None
 
@@ -393,6 +436,8 @@ class SearchForm(BaseModel):
 @router.get('/embedding')
 async def get_embedding_config(request: Request, user=Depends(get_admin_user)):
     config = await get_retrieval_config()
+    openai_url, openai_key = display_feature_credentials(config.RAG_OPENAI_API_BASE_URL, config.RAG_OPENAI_API_KEY)
+    inherits_openrouter = await is_openrouter_configured() and not openai_key
     return {
         'status': True,
         'RAG_EMBEDDING_ENGINE': config.RAG_EMBEDDING_ENGINE,
@@ -400,9 +445,10 @@ async def get_embedding_config(request: Request, user=Depends(get_admin_user)):
         'RAG_EMBEDDING_BATCH_SIZE': config.RAG_EMBEDDING_BATCH_SIZE,
         'ENABLE_ASYNC_EMBEDDING': config.ENABLE_ASYNC_EMBEDDING,
         'RAG_EMBEDDING_CONCURRENT_REQUESTS': config.RAG_EMBEDDING_CONCURRENT_REQUESTS,
+        'inherits_openrouter': inherits_openrouter,
         'openai_config': {
-            'url': config.RAG_OPENAI_API_BASE_URL,
-            'key': config.RAG_OPENAI_API_KEY,
+            'url': openai_url,
+            'key': openai_key,
         },
         'ollama_config': {
             'url': config.RAG_OLLAMA_BASE_URL,
@@ -493,38 +539,10 @@ async def update_embedding_config(request: Request, form_data: EmbeddingModelUpd
             config.RAG_EMBEDDING_ENGINE,
             config.RAG_EMBEDDING_MODEL,
         )
-
-        request.app.state.EMBEDDING_FUNCTION = get_embedding_function(
-            config.RAG_EMBEDDING_ENGINE,
-            config.RAG_EMBEDDING_MODEL,
-            request.app.state.ef,
-            (
-                config.RAG_OPENAI_API_BASE_URL
-                if config.RAG_EMBEDDING_ENGINE == 'openai'
-                else (
-                    config.RAG_OLLAMA_BASE_URL
-                    if config.RAG_EMBEDDING_ENGINE == 'ollama'
-                    else config.RAG_AZURE_OPENAI_BASE_URL
-                )
-            ),
-            (
-                config.RAG_OPENAI_API_KEY
-                if config.RAG_EMBEDDING_ENGINE == 'openai'
-                else (
-                    config.RAG_OLLAMA_API_KEY
-                    if config.RAG_EMBEDDING_ENGINE == 'ollama'
-                    else config.RAG_AZURE_OPENAI_API_KEY
-                )
-            ),
-            config.RAG_EMBEDDING_BATCH_SIZE,
-            azure_api_version=(
-                config.RAG_AZURE_OPENAI_API_VERSION if config.RAG_EMBEDDING_ENGINE == 'azure_openai' else None
-            ),
-            enable_async=config.ENABLE_ASYNC_EMBEDDING,
-            concurrent_requests=config.RAG_EMBEDDING_CONCURRENT_REQUESTS,
-        )
+        await rebuild_embedding_function(request.app)
 
         await config.save()
+        openai_url, openai_key = display_feature_credentials(config.RAG_OPENAI_API_BASE_URL, config.RAG_OPENAI_API_KEY)
         return {
             'status': True,
             'RAG_EMBEDDING_ENGINE': config.RAG_EMBEDDING_ENGINE,
@@ -532,9 +550,10 @@ async def update_embedding_config(request: Request, form_data: EmbeddingModelUpd
             'RAG_EMBEDDING_BATCH_SIZE': config.RAG_EMBEDDING_BATCH_SIZE,
             'ENABLE_ASYNC_EMBEDDING': config.ENABLE_ASYNC_EMBEDDING,
             'RAG_EMBEDDING_CONCURRENT_REQUESTS': config.RAG_EMBEDDING_CONCURRENT_REQUESTS,
+            'inherits_openrouter': await is_openrouter_configured() and not openai_key,
             'openai_config': {
-                'url': config.RAG_OPENAI_API_BASE_URL,
-                'key': config.RAG_OPENAI_API_KEY,
+                'url': openai_url,
+                'key': openai_key,
             },
             'ollama_config': {
                 'url': config.RAG_OLLAMA_BASE_URL,
@@ -1679,28 +1698,16 @@ def save_docs_to_vector_db(
                 return True
 
         log.info(f'generating embeddings for {collection_name}')
+        embedding_url, embedding_key = asyncio.run_coroutine_threadsafe(
+            resolved_rag_openai_credentials(config),
+            request.app.state.main_loop,
+        ).result(timeout=10)
         embedding_function = get_embedding_function(
             config.RAG_EMBEDDING_ENGINE,
             config.RAG_EMBEDDING_MODEL,
             request.app.state.ef,
-            (
-                config.RAG_OPENAI_API_BASE_URL
-                if config.RAG_EMBEDDING_ENGINE == 'openai'
-                else (
-                    config.RAG_OLLAMA_BASE_URL
-                    if config.RAG_EMBEDDING_ENGINE == 'ollama'
-                    else config.RAG_AZURE_OPENAI_BASE_URL
-                )
-            ),
-            (
-                config.RAG_OPENAI_API_KEY
-                if config.RAG_EMBEDDING_ENGINE == 'openai'
-                else (
-                    config.RAG_OLLAMA_API_KEY
-                    if config.RAG_EMBEDDING_ENGINE == 'ollama'
-                    else config.RAG_AZURE_OPENAI_API_KEY
-                )
-            ),
+            embedding_url,
+            embedding_key,
             config.RAG_EMBEDDING_BATCH_SIZE,
             azure_api_version=(
                 config.RAG_AZURE_OPENAI_API_VERSION if config.RAG_EMBEDDING_ENGINE == 'azure_openai' else None

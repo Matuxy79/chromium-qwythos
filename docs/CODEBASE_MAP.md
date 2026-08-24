@@ -111,6 +111,23 @@ Read these files in order for end-to-end chat work:
 5. [`backend/qwythos/utils/chat.py`](../backend/qwythos/utils/chat.py) dispatches to direct, function/pipe, Ollama, or OpenAI-compatible execution.
 6. [`backend/qwythos/routers/ollama.py`](../backend/qwythos/routers/ollama.py) and [`backend/qwythos/routers/openai.py`](../backend/qwythos/routers/openai.py) communicate with upstream providers.
 
+### Provider credentials (OpenRouter, v0.12)
+
+Production deployments are meant to use one OpenRouter key. Do not reintroduce per-feature URL+key pairs as the default path.
+
+| Piece | Path |
+| ----- | ---- |
+| Env + defaults | [`backend/qwythos/config.py`](../backend/qwythos/config.py) (`OPENROUTER_API_KEY`, `openrouter.api_key` / `openrouter.base_url`) |
+| Resolver and connection sync | [`backend/qwythos/utils/openrouter.py`](../backend/qwythos/utils/openrouter.py) |
+| Chat connections + OpenRouter admin API | [`backend/qwythos/routers/openai.py`](../backend/qwythos/routers/openai.py) `GET/POST /openai/config` |
+| RAG / audio / images inherit | [`backend/qwythos/routers/retrieval.py`](../backend/qwythos/routers/retrieval.py), [`backend/qwythos/routers/audio.py`](../backend/qwythos/routers/audio.py), [`backend/qwythos/routers/images.py`](../backend/qwythos/routers/images.py) |
+| Admin UI | [`src/lib/components/admin/Settings/Connections.svelte`](../src/lib/components/admin/Settings/Connections.svelte) |
+| First-run key | [`src/routes/auth/+page.svelte`](../src/routes/auth/+page.svelte) + `SignupForm.openrouter_api_key` |
+
+Feature-specific `rag.openai.*`, `audio.*.openai.*`, and `image_generation.openai.*` keys remain as optional overrides. Empty / `https://api.openai.com/v1` with no key is treated as unset and inherits OpenRouter (or the first OpenAI-compatible chat connection). Extra providers and Ollama live under Connections → Advanced. Direct user connections are unchanged.
+
+**Trap:** do not restore the old config.py block that rebound `OPENAI_API_KEY` / `OPENAI_API_BASE_URL` to whichever list index held `https://api.openai.com/v1`. That emptied every downstream feature default on OpenRouter-only installs.
+
 ### Retrieval path
 
 | Path                                                                                                      | Role                                                                     |
@@ -191,7 +208,7 @@ Do not treat these as primary source locations.
 | `__pycache__/`, `.pytest_cache/`, coverage output | Python/test tools                  | Disposable generated artifacts                                                        |
 | `work/`                                           | Local agent/developer scratch work | Ignored workspace, not product source                                                 |
 
-The root `test/` directory currently contains fixture data rather than a broad test suite. The visible frontend unit test is [`src/lib/shortcuts.test.ts`](../src/lib/shortcuts.test.ts); benchmark code lives under [`bench/`](../bench/). Do not infer full subsystem coverage from the directory name.
+The root `test/` directory currently contains fixture data plus [`test/test_openrouter_credentials.py`](../test/test_openrouter_credentials.py) for the OpenRouter credential resolver. The visible frontend unit test is [`src/lib/shortcuts.test.ts`](../src/lib/shortcuts.test.ts); benchmark code lives under [`bench/`](../bench/). Do not infer full subsystem coverage from the directory name.
 
 ## Common verification commands
 

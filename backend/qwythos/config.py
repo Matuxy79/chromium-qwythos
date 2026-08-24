@@ -35,12 +35,22 @@ from qwythos.env import (
     log,
 )
 from qwythos.models.config import Config
+from qwythos.utils.openrouter import (
+    OPENAI_OFFICIAL_BASE_URL,
+    OPENROUTER_DEFAULT_BASE_URL,
+    is_openrouter_key,
+    is_openrouter_url,
+    normalize_base_url,
+)
 
 
 async def seed_registered_defaults():
     await Config.rename_prefix('rag.web', 'web')
     await Config.repair_flattened_dict_configs()
     await Config.seed_defaults(DEFAULT_CONFIG)
+    from qwythos.utils.openrouter import ensure_openrouter_openai_connection
+
+    await ensure_openrouter_openai_connection(hydrate=True)
 
 
 async def async_reset_config():
@@ -302,9 +312,8 @@ if _ollama_api_configs:
         log.warning('OLLAMA_API_CONFIGS is not valid JSON, ignoring')
 
 ####################################
-# OPENAI_API
+# OPENAI_API / OPENROUTER
 ####################################
-
 
 ENABLE_OPENAI_API = os.getenv('ENABLE_OPENAI_API', 'True').lower() == 'true'
 
@@ -315,12 +324,27 @@ OPENAI_API_BASE_URL = os.getenv('OPENAI_API_BASE_URL', '')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 GEMINI_API_BASE_URL = os.getenv('GEMINI_API_BASE_URL', '')
 
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
+OPENROUTER_API_BASE_URL = normalize_base_url(os.getenv('OPENROUTER_API_BASE_URL', '')) or OPENROUTER_DEFAULT_BASE_URL
+
+# Production default is a single OpenRouter key. Accept the older OPENAI_* env
+# shape when it already points at OpenRouter so existing .env files keep working.
+if not OPENROUTER_API_KEY and (
+    is_openrouter_url(OPENAI_API_BASE_URL) or is_openrouter_key(OPENAI_API_KEY)
+):
+    OPENROUTER_API_KEY = OPENAI_API_KEY
+    if is_openrouter_url(OPENAI_API_BASE_URL):
+        OPENROUTER_API_BASE_URL = normalize_base_url(OPENAI_API_BASE_URL)
+
+_openai_base_urls_from_env = os.getenv('OPENAI_API_BASE_URLS', '')
 
 if OPENAI_API_BASE_URL == '':
-    OPENAI_API_BASE_URL = 'https://api.openai.com/v1'
+    OPENAI_API_BASE_URL = OPENROUTER_API_BASE_URL if OPENROUTER_API_KEY else OPENAI_OFFICIAL_BASE_URL
 else:
-    if OPENAI_API_BASE_URL.endswith('/'):
-        OPENAI_API_BASE_URL = OPENAI_API_BASE_URL[:-1]
+    OPENAI_API_BASE_URL = normalize_base_url(OPENAI_API_BASE_URL) or OPENAI_OFFICIAL_BASE_URL
+
+if OPENROUTER_API_KEY and not OPENAI_API_KEY:
+    OPENAI_API_KEY = OPENROUTER_API_KEY
 
 OPENAI_API_KEYS = os.getenv('OPENAI_API_KEYS', '')
 OPENAI_API_KEYS = OPENAI_API_KEYS if OPENAI_API_KEYS != '' else OPENAI_API_KEY
@@ -328,11 +352,12 @@ OPENAI_API_KEYS = OPENAI_API_KEYS if OPENAI_API_KEYS != '' else OPENAI_API_KEY
 OPENAI_API_KEYS = [url.strip() for url in OPENAI_API_KEYS.split(';')]
 OPENAI_API_KEYS = OPENAI_API_KEYS
 
-OPENAI_API_BASE_URLS = os.getenv('OPENAI_API_BASE_URLS', '')
+OPENAI_API_BASE_URLS = _openai_base_urls_from_env
 OPENAI_API_BASE_URLS = OPENAI_API_BASE_URLS if OPENAI_API_BASE_URLS != '' else OPENAI_API_BASE_URL
 
 OPENAI_API_BASE_URLS = [
-    url.strip() if url != '' else 'https://api.openai.com/v1' for url in OPENAI_API_BASE_URLS.split(';')
+    (url.strip() or (OPENROUTER_API_BASE_URL if OPENROUTER_API_KEY else OPENAI_OFFICIAL_BASE_URL))
+    for url in OPENAI_API_BASE_URLS.split(';')
 ]
 OPENAI_API_BASE_URLS = OPENAI_API_BASE_URLS
 
@@ -348,13 +373,18 @@ if _openai_api_configs:
     except (json.JSONDecodeError, TypeError):
         log.warning('OPENAI_API_CONFIGS is not valid JSON, ignoring')
 
-# Get the actual OpenAI API key based on the base URL
-OPENAI_API_KEY = ''
-try:
-    OPENAI_API_KEY = OPENAI_API_KEYS[OPENAI_API_BASE_URLS.index('https://api.openai.com/v1')]
-except Exception:
-    pass
-OPENAI_API_BASE_URL = 'https://api.openai.com/v1'
+# Canonical OpenAI-compatible credentials for any leftover env-level consumers.
+# Do NOT force this back to api.openai.com — that emptied every feature default
+# on OpenRouter-only deployments.
+if OPENROUTER_API_KEY:
+    OPENAI_API_BASE_URL = OPENROUTER_API_BASE_URL
+    OPENAI_API_KEY = OPENROUTER_API_KEY
+elif OPENAI_API_BASE_URLS:
+    OPENAI_API_BASE_URL = OPENAI_API_BASE_URLS[0]
+    OPENAI_API_KEY = OPENAI_API_KEYS[0] if OPENAI_API_KEYS else ''
+else:
+    OPENAI_API_BASE_URL = OPENAI_OFFICIAL_BASE_URL
+    OPENAI_API_KEY = ''
 
 
 ####################################
@@ -1077,8 +1107,9 @@ Provide a clear and direct response to the user's query, including inline citati
 
 RAG_TEMPLATE = os.getenv('RAG_TEMPLATE', DEFAULT_RAG_TEMPLATE)
 
-RAG_OPENAI_API_BASE_URL = os.getenv('RAG_OPENAI_API_BASE_URL', OPENAI_API_BASE_URL)
-RAG_OPENAI_API_KEY = os.getenv('RAG_OPENAI_API_KEY', OPENAI_API_KEY)
+# Empty defaults inherit the OpenRouter key at runtime. Explicit env still wins.
+RAG_OPENAI_API_BASE_URL = os.getenv('RAG_OPENAI_API_BASE_URL', '')
+RAG_OPENAI_API_KEY = os.getenv('RAG_OPENAI_API_KEY', '')
 
 RAG_AZURE_OPENAI_BASE_URL = os.getenv('RAG_AZURE_OPENAI_BASE_URL', '')
 RAG_AZURE_OPENAI_API_KEY = os.getenv('RAG_AZURE_OPENAI_API_KEY', '')
@@ -1461,10 +1492,10 @@ except json.JSONDecodeError:
 
 COMFYUI_WORKFLOW_NODES = comfyui_workflow_nodes
 
-IMAGES_OPENAI_API_BASE_URL = os.getenv('IMAGES_OPENAI_API_BASE_URL', OPENAI_API_BASE_URL)
+IMAGES_OPENAI_API_BASE_URL = os.getenv('IMAGES_OPENAI_API_BASE_URL', '')
 IMAGES_OPENAI_API_VERSION = os.getenv('IMAGES_OPENAI_API_VERSION', '')
 
-IMAGES_OPENAI_API_KEY = os.getenv('IMAGES_OPENAI_API_KEY', OPENAI_API_KEY)
+IMAGES_OPENAI_API_KEY = os.getenv('IMAGES_OPENAI_API_KEY', '')
 
 images_openai_params = os.getenv('IMAGES_OPENAI_PARAMS', '')
 try:
@@ -1491,10 +1522,10 @@ IMAGE_EDIT_SIZE = os.getenv('IMAGE_EDIT_SIZE', '')
 
 ENABLE_OPENAI_IMAGE_EDIT_NORMALIZATION = os.getenv('ENABLE_OPENAI_IMAGE_EDIT_NORMALIZATION', 'true').lower() == 'true'
 
-IMAGES_EDIT_OPENAI_API_BASE_URL = os.getenv('IMAGES_EDIT_OPENAI_API_BASE_URL', OPENAI_API_BASE_URL)
+IMAGES_EDIT_OPENAI_API_BASE_URL = os.getenv('IMAGES_EDIT_OPENAI_API_BASE_URL', '')
 IMAGES_EDIT_OPENAI_API_VERSION = os.getenv('IMAGES_EDIT_OPENAI_API_VERSION', '')
 
-IMAGES_EDIT_OPENAI_API_KEY = os.getenv('IMAGES_EDIT_OPENAI_API_KEY', OPENAI_API_KEY)
+IMAGES_EDIT_OPENAI_API_KEY = os.getenv('IMAGES_EDIT_OPENAI_API_KEY', '')
 
 IMAGES_EDIT_GEMINI_API_BASE_URL = os.getenv('IMAGES_EDIT_GEMINI_API_BASE_URL', GEMINI_API_BASE_URL)
 IMAGES_EDIT_GEMINI_API_KEY = os.getenv('IMAGES_EDIT_GEMINI_API_KEY', GEMINI_API_KEY)
@@ -1536,9 +1567,9 @@ DEEPGRAM_API_KEY = os.getenv('DEEPGRAM_API_KEY', '')
 # ElevenLabs configuration
 ELEVENLABS_API_BASE_URL = os.getenv('ELEVENLABS_API_BASE_URL', 'https://api.elevenlabs.io')
 
-AUDIO_STT_OPENAI_API_BASE_URL = os.getenv('AUDIO_STT_OPENAI_API_BASE_URL', OPENAI_API_BASE_URL)
+AUDIO_STT_OPENAI_API_BASE_URL = os.getenv('AUDIO_STT_OPENAI_API_BASE_URL', '')
 
-AUDIO_STT_OPENAI_API_KEY = os.getenv('AUDIO_STT_OPENAI_API_KEY', OPENAI_API_KEY)
+AUDIO_STT_OPENAI_API_KEY = os.getenv('AUDIO_STT_OPENAI_API_KEY', '')
 
 AUDIO_STT_OPENAI_API_REQUEST_FORMAT = os.getenv('AUDIO_STT_OPENAI_API_REQUEST_FORMAT', 'multipart')
 
@@ -1577,8 +1608,8 @@ AUDIO_STT_MISTRAL_API_BASE_URL = os.getenv('AUDIO_STT_MISTRAL_API_BASE_URL', 'ht
 
 AUDIO_STT_MISTRAL_USE_CHAT_COMPLETIONS = os.getenv('AUDIO_STT_MISTRAL_USE_CHAT_COMPLETIONS', 'false').lower() == 'true'
 
-AUDIO_TTS_OPENAI_API_BASE_URL = os.getenv('AUDIO_TTS_OPENAI_API_BASE_URL', OPENAI_API_BASE_URL)
-AUDIO_TTS_OPENAI_API_KEY = os.getenv('AUDIO_TTS_OPENAI_API_KEY', OPENAI_API_KEY)
+AUDIO_TTS_OPENAI_API_BASE_URL = os.getenv('AUDIO_TTS_OPENAI_API_BASE_URL', '')
+AUDIO_TTS_OPENAI_API_KEY = os.getenv('AUDIO_TTS_OPENAI_API_KEY', '')
 
 audio_tts_openai_params = os.getenv('AUDIO_TTS_OPENAI_PARAMS', '')
 try:
@@ -2829,6 +2860,8 @@ DEFAULT_CONFIG = {
     'openai.api_keys': OPENAI_API_KEYS,
     'openai.api_base_urls': OPENAI_API_BASE_URLS,
     'openai.api_configs': OPENAI_API_CONFIGS,
+    'openrouter.api_key': OPENROUTER_API_KEY,
+    'openrouter.base_url': OPENROUTER_API_BASE_URL,
     'models.base_models_cache': ENABLE_BASE_MODELS_CACHE,
     'tool_server.connections': TOOL_SERVER_CONNECTIONS,
     'oauth.client.timeout': OAUTH_CLIENT_TIMEOUT,

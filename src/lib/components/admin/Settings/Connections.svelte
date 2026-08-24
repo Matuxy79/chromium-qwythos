@@ -15,12 +15,14 @@
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Plus from '$lib/components/icons/Plus.svelte';
+	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
 
 	import OpenAIConnection from './Connections/OpenAIConnection.svelte';
 	import AddConnectionModal from '$lib/components/AddConnectionModal.svelte';
 	import OllamaConnection from './Connections/OllamaConnection.svelte';
 	import AdminSettingRow from './AdminSettingRow.svelte';
 	import AdminSettingSection from './AdminSettingSection.svelte';
+	import AdminSettingField from './AdminSettingField.svelte';
 
 	const i18n: any = getContext('i18n');
 
@@ -41,6 +43,9 @@
 	let OPENAI_API_KEYS: string[] = [''];
 	let OPENAI_API_BASE_URLS: string[] = [''];
 	let OPENAI_API_CONFIGS: any = {};
+	let OPENROUTER_API_KEY = '';
+	let OPENROUTER_API_BASE_URL = 'https://openrouter.ai/api/v1';
+	let showAdvanced = false;
 
 	let ENABLE_OPENAI_API: null | boolean = null;
 	let ENABLE_OLLAMA_API: null | boolean = null;
@@ -76,13 +81,21 @@
 				ENABLE_OPENAI_API: ENABLE_OPENAI_API,
 				OPENAI_API_BASE_URLS: OPENAI_API_BASE_URLS,
 				OPENAI_API_KEYS: OPENAI_API_KEYS,
-				OPENAI_API_CONFIGS: OPENAI_API_CONFIGS
+				OPENAI_API_CONFIGS: OPENAI_API_CONFIGS,
+				OPENROUTER_API_KEY: OPENROUTER_API_KEY,
+				OPENROUTER_API_BASE_URL: OPENROUTER_API_BASE_URL
 			}).catch((error) => {
 				toast.error(`${error}`);
 			});
 
 			if (res) {
-				toast.success($i18n.t('OpenAI API settings updated'));
+				toast.success($i18n.t('OpenRouter settings updated'));
+				ENABLE_OPENAI_API = res.ENABLE_OPENAI_API;
+				OPENAI_API_BASE_URLS = res.OPENAI_API_BASE_URLS;
+				OPENAI_API_KEYS = res.OPENAI_API_KEYS;
+				OPENAI_API_CONFIGS = res.OPENAI_API_CONFIGS;
+				OPENROUTER_API_KEY = res.OPENROUTER_API_KEY ?? OPENROUTER_API_KEY;
+				OPENROUTER_API_BASE_URL = res.OPENROUTER_API_BASE_URL ?? OPENROUTER_API_BASE_URL;
 				await models.set(await getModels());
 			}
 		}
@@ -161,6 +174,9 @@
 			OPENAI_API_BASE_URLS = openaiConfig.OPENAI_API_BASE_URLS;
 			OPENAI_API_KEYS = openaiConfig.OPENAI_API_KEYS;
 			OPENAI_API_CONFIGS = openaiConfig.OPENAI_API_CONFIGS;
+			OPENROUTER_API_KEY = openaiConfig.OPENROUTER_API_KEY ?? '';
+			OPENROUTER_API_BASE_URL =
+				openaiConfig.OPENROUTER_API_BASE_URL || 'https://openrouter.ai/api/v1';
 
 			OLLAMA_BASE_URLS = ollamaConfig.OLLAMA_BASE_URLS;
 			OLLAMA_API_CONFIGS = ollamaConfig.OLLAMA_API_CONFIGS;
@@ -223,7 +239,21 @@
 	<div class="flex-1 min-h-0 overflow-y-auto scrollbar-hover pr-1.5">
 		{#if ENABLE_OPENAI_API !== null && ENABLE_OLLAMA_API !== null && connectionsConfig !== null}
 			<AdminSettingSection first>
-				<AdminSettingRow label={$i18n.t('OpenAI API')} let:labelId>
+				<AdminSettingField
+					label={$i18n.t('OpenRouter API Key')}
+					description={$i18n.t(
+						'One key for chat, embeddings, speech, and images. Additional providers can be added under Advanced.'
+					)}
+				>
+					<SensitiveInput
+						variant="settings"
+						placeholder="sk-or-..."
+						bind:value={OPENROUTER_API_KEY}
+						required={false}
+					/>
+				</AdminSettingField>
+
+				<AdminSettingRow label={$i18n.t('OpenAI-compatible API')} let:labelId>
 					<Switch
 						bind:state={ENABLE_OPENAI_API}
 						on:change={async () => {
@@ -233,119 +263,152 @@
 					/>
 				</AdminSettingRow>
 
-				{#if ENABLE_OPENAI_API}
-					<div>
-						<div class="mb-2 flex items-center justify-between gap-4">
-							<div class="text-xs text-gray-600 dark:text-gray-400">
-								{$i18n.t('Manage OpenAI API Connections')}
+				<button
+					type="button"
+					class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
+					on:click={() => (showAdvanced = !showAdvanced)}
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 20 20"
+						fill="currentColor"
+						class="w-3 h-3 transition-transform {showAdvanced ? 'rotate-90' : ''}"
+					>
+						<path
+							fill-rule="evenodd"
+							d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+							clip-rule="evenodd"
+						/>
+					</svg>
+					{$i18n.t('Advanced')}
+				</button>
+
+				{#if showAdvanced}
+					<AdminSettingField
+						label={$i18n.t('OpenRouter Base URL')}
+						description={$i18n.t('Leave the default unless you proxy OpenRouter.')}
+					>
+						<input
+							class="w-full h-7 rounded-lg border border-gray-100/50 bg-gray-50/40 px-2 text-xs text-gray-700 outline-hidden transition-colors placeholder:text-gray-300 focus:border-blue-400 dark:border-white/[0.04] dark:bg-white/[0.03] dark:text-gray-300 dark:placeholder:text-gray-700 dark:focus:border-blue-500"
+							bind:value={OPENROUTER_API_BASE_URL}
+							placeholder="https://openrouter.ai/api/v1"
+						/>
+					</AdminSettingField>
+
+					{#if ENABLE_OPENAI_API}
+						<div>
+							<div class="mb-2 flex items-center justify-between gap-4">
+								<div class="text-xs text-gray-600 dark:text-gray-400">
+									{$i18n.t('Manage OpenAI API Connections')}
+								</div>
+
+								<Tooltip content={$i18n.t(`Add Connection`)}>
+									<button
+										class="flex size-6 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-700 dark:text-gray-600 dark:hover:bg-white/5 dark:hover:text-gray-300"
+										on:click={() => {
+											showAddOpenAIConnectionModal = true;
+										}}
+										type="button"
+									>
+										<Plus />
+									</button>
+								</Tooltip>
 							</div>
 
-							<Tooltip content={$i18n.t(`Add Connection`)}>
-								<button
-									class="flex size-6 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-700 dark:text-gray-600 dark:hover:bg-white/5 dark:hover:text-gray-300"
-									on:click={() => {
-										showAddOpenAIConnectionModal = true;
-									}}
-									type="button"
-								>
-									<Plus />
-								</button>
-							</Tooltip>
+							<div class="flex flex-col gap-1.5">
+								{#each OPENAI_API_BASE_URLS as url, idx}
+									<OpenAIConnection
+										bind:url={OPENAI_API_BASE_URLS[idx]}
+										bind:key={OPENAI_API_KEYS[idx]}
+										bind:config={OPENAI_API_CONFIGS[idx]}
+										pipeline={pipelineUrls[url] ? true : false}
+										onSubmit={() => {
+											updateOpenAIHandler();
+										}}
+										onDelete={() => {
+											OPENAI_API_BASE_URLS = OPENAI_API_BASE_URLS.filter(
+												(url, urlIdx) => idx !== urlIdx
+											);
+											OPENAI_API_KEYS = OPENAI_API_KEYS.filter((key, keyIdx) => idx !== keyIdx);
+
+											let newConfig: any = {};
+											OPENAI_API_BASE_URLS.forEach((url, newIdx) => {
+												newConfig[newIdx] = OPENAI_API_CONFIGS[newIdx < idx ? newIdx : newIdx + 1];
+											});
+											OPENAI_API_CONFIGS = newConfig;
+											updateOpenAIHandler();
+										}}
+									/>
+								{/each}
+							</div>
 						</div>
+					{/if}
 
-						<div class="flex flex-col gap-1.5">
-							{#each OPENAI_API_BASE_URLS as url, idx}
-								<OpenAIConnection
-									bind:url={OPENAI_API_BASE_URLS[idx]}
-									bind:key={OPENAI_API_KEYS[idx]}
-									bind:config={OPENAI_API_CONFIGS[idx]}
-									pipeline={pipelineUrls[url] ? true : false}
-									onSubmit={() => {
-										updateOpenAIHandler();
-									}}
-									onDelete={() => {
-										OPENAI_API_BASE_URLS = OPENAI_API_BASE_URLS.filter(
-											(url, urlIdx) => idx !== urlIdx
-										);
-										OPENAI_API_KEYS = OPENAI_API_KEYS.filter((key, keyIdx) => idx !== keyIdx);
+					<AdminSettingRow label={$i18n.t('Ollama API')} let:labelId>
+						<Switch
+							bind:state={ENABLE_OLLAMA_API}
+							on:change={async () => {
+								updateOllamaHandler();
+							}}
+							ariaLabelledbyId={labelId}
+						/>
+					</AdminSettingRow>
 
-										let newConfig: any = {};
-										OPENAI_API_BASE_URLS.forEach((url, newIdx) => {
-											newConfig[newIdx] = OPENAI_API_CONFIGS[newIdx < idx ? newIdx : newIdx + 1];
-										});
-										OPENAI_API_CONFIGS = newConfig;
-										updateOpenAIHandler();
-									}}
-								/>
-							{/each}
-						</div>
-					</div>
-				{/if}
+					{#if ENABLE_OLLAMA_API}
+						<div>
+							<div class="mb-2 flex items-center justify-between gap-4">
+								<div class="text-xs text-gray-600 dark:text-gray-400">
+									{$i18n.t('Manage Ollama API Connections')}
+								</div>
 
-				<AdminSettingRow label={$i18n.t('Ollama API')} let:labelId>
-					<Switch
-						bind:state={ENABLE_OLLAMA_API}
-						on:change={async () => {
-							updateOllamaHandler();
-						}}
-						ariaLabelledbyId={labelId}
-					/>
-				</AdminSettingRow>
-
-				{#if ENABLE_OLLAMA_API}
-					<div>
-						<div class="mb-2 flex items-center justify-between gap-4">
-							<div class="text-xs text-gray-600 dark:text-gray-400">
-								{$i18n.t('Manage Ollama API Connections')}
+								<Tooltip content={$i18n.t(`Add Connection`)}>
+									<button
+										class="flex size-6 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-700 dark:text-gray-600 dark:hover:bg-white/5 dark:hover:text-gray-300"
+										on:click={() => {
+											showAddOllamaConnectionModal = true;
+										}}
+										type="button"
+									>
+										<Plus />
+									</button>
+								</Tooltip>
 							</div>
 
-							<Tooltip content={$i18n.t(`Add Connection`)}>
-								<button
-									class="flex size-6 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-700 dark:text-gray-600 dark:hover:bg-white/5 dark:hover:text-gray-300"
-									on:click={() => {
-										showAddOllamaConnectionModal = true;
-									}}
-									type="button"
+							<div class="flex flex-col gap-1.5">
+								{#each OLLAMA_BASE_URLS as url, idx}
+									<OllamaConnection
+										bind:url={OLLAMA_BASE_URLS[idx]}
+										bind:config={OLLAMA_API_CONFIGS[idx]}
+										{idx}
+										onSubmit={() => {
+											updateOllamaHandler();
+										}}
+										onDelete={() => {
+											OLLAMA_BASE_URLS = OLLAMA_BASE_URLS.filter((url, urlIdx) => idx !== urlIdx);
+
+											let newConfig: any = {};
+											OLLAMA_BASE_URLS.forEach((url, newIdx) => {
+												newConfig[newIdx] = OLLAMA_API_CONFIGS[newIdx < idx ? newIdx : newIdx + 1];
+											});
+											OLLAMA_API_CONFIGS = newConfig;
+											updateOllamaHandler();
+										}}
+									/>
+								{/each}
+							</div>
+
+							<div class="mt-1 text-[0.6875rem] text-gray-400 dark:text-gray-600">
+								{$i18n.t('Trouble accessing Ollama?')}
+								<a
+									class="font-normal underline hover:text-gray-700 dark:hover:text-gray-300"
+									href="https://github.com/qwythos/qwythos#troubleshooting"
+									target="_blank"
 								>
-									<Plus />
-								</button>
-							</Tooltip>
+									{$i18n.t('Click here for help.')}
+								</a>
+							</div>
 						</div>
-
-						<div class="flex flex-col gap-1.5">
-							{#each OLLAMA_BASE_URLS as url, idx}
-								<OllamaConnection
-									bind:url={OLLAMA_BASE_URLS[idx]}
-									bind:config={OLLAMA_API_CONFIGS[idx]}
-									{idx}
-									onSubmit={() => {
-										updateOllamaHandler();
-									}}
-									onDelete={() => {
-										OLLAMA_BASE_URLS = OLLAMA_BASE_URLS.filter((url, urlIdx) => idx !== urlIdx);
-
-										let newConfig: any = {};
-										OLLAMA_BASE_URLS.forEach((url, newIdx) => {
-											newConfig[newIdx] = OLLAMA_API_CONFIGS[newIdx < idx ? newIdx : newIdx + 1];
-										});
-										OLLAMA_API_CONFIGS = newConfig;
-										updateOllamaHandler();
-									}}
-								/>
-							{/each}
-						</div>
-
-						<div class="mt-1 text-[0.6875rem] text-gray-400 dark:text-gray-600">
-							{$i18n.t('Trouble accessing Ollama?')}
-							<a
-								class="font-normal underline hover:text-gray-700 dark:hover:text-gray-300"
-								href="https://github.com/qwythos/qwythos#troubleshooting"
-								target="_blank"
-							>
-								{$i18n.t('Click here for help.')}
-							</a>
-						</div>
-					</div>
+					{/if}
 				{/if}
 			</AdminSettingSection>
 

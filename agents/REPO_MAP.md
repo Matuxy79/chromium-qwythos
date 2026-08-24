@@ -1,6 +1,6 @@
 # Repository Map — Qwythos (chromium-qwythos)
 
-_Last scan: 2026-08-17 · version 0.11.0 · Python 3.11–3.12 · Svelte 5 / SvelteKit 2_
+_Last scan: 2026-08-24 · version 0.12.0 · Python 3.11–3.12 · Svelte 5 / SvelteKit 2_
 
 ## What this repo is
 
@@ -44,7 +44,8 @@ redistribution.
 Entry point: `main.py` (uvicorn `qwythos.main:app`, port 8080). Mounts Socket.IO
 at `/ws`, plus routers (all from `routers/`):
 
-- Model/provider: `ollama` `/ollama`, `openai` `/openai`, `pipelines`, `models`
+- Model/provider: `ollama` `/ollama`, `openai` `/openai` (includes
+  `openrouter.api_key` on GET/POST `/openai/config`), `pipelines`, `models`
 - Core: `auths`, `users`, `groups`, `chats`, `folders`, `files`, `configs`, `utils`
 - Fork-era features: `council`, `channels`, `notes`, `memories`, `automations`,
   `calendar`, `terminals`, `skills`, `analytics`, `notifications`
@@ -61,7 +62,8 @@ Other key modules:
 - `models/` — 26 SQLAlchemy model modules; sessions via `internal/db.py`
 - `utils/` — ~50 modules: `auth.py`, `oauth.py`, `chat.py`, `middleware.py`,
   `plugin.py`, `filter.py`, `tools.py`, `mcp/`, `telemetry/`, `images/`,
-  `council.py`, `subagents.py`, `context_compaction.py`
+  `council.py`, `subagents.py`, `context_compaction.py`, `openrouter.py`
+  (v0.12 OpenRouter key resolver used by chat, RAG, audio, images)
 - `retrieval/` — RAG: `loaders/` (10 engines), `vector/dbs/` (15 vector backends),
   `web/` (33 search providers), `models/` (rerankers)
 - `socket/main.py` — Socket.IO server; `storage/provider.py` — local/S3/GCS/Azure
