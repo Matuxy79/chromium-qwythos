@@ -108,8 +108,8 @@ Read these files in order for end-to-end chat work:
 2. [`src/lib/apis/openai/index.ts`](../src/lib/apis/openai/index.ts) sends `POST /api/chat/completions`.
 3. [`backend/qwythos/main.py`](../backend/qwythos/main.py) validates model access, normalizes metadata, and creates UI background tasks or returns a direct response.
 4. [`backend/qwythos/utils/middleware.py`](../backend/qwythos/utils/middleware.py) enriches payloads and processes streaming/non-streaming responses, tool loops, persistence, and events.
-5. [`backend/qwythos/utils/chat.py`](../backend/qwythos/utils/chat.py) dispatches to direct, function/pipe, Ollama, or OpenAI-compatible execution.
-6. [`backend/qwythos/routers/ollama.py`](../backend/qwythos/routers/ollama.py) and [`backend/qwythos/routers/openai.py`](../backend/qwythos/routers/openai.py) communicate with upstream providers.
+5. [`backend/qwythos/utils/chat.py`](../backend/qwythos/utils/chat.py) dispatches to direct, function/pipe, Ollama, OpenAI-compatible, or (when `model.council` is set) LLM Council execution.
+6. [`backend/qwythos/routers/ollama.py`](../backend/qwythos/routers/ollama.py) and [`backend/qwythos/routers/openai.py`](../backend/qwythos/routers/openai.py) communicate with upstream providers; [`backend/qwythos/utils/council.py`](../backend/qwythos/utils/council.py) instead runs a 3-stage parallel-answer / peer-ranking / chairman-synthesis pipeline across several models for a single request.
 
 ### Provider credentials (OpenRouter, v0.12)
 
@@ -127,6 +127,22 @@ Production deployments are meant to use one OpenRouter key. Do not reintroduce p
 Feature-specific `rag.openai.*`, `audio.*.openai.*`, and `image_generation.openai.*` keys remain as optional overrides. Empty / `https://api.openai.com/v1` with no key is treated as unset and inherits OpenRouter (or the first OpenAI-compatible chat connection). Extra providers and Ollama live under Connections → Advanced. Direct user connections are unchanged.
 
 **Trap:** do not restore the old config.py block that rebound `OPENAI_API_KEY` / `OPENAI_API_BASE_URL` to whichever list index held `https://api.openai.com/v1`. That emptied every downstream feature default on OpenRouter-only installs.
+
+### Model context: current date + default-on tools (v0.12.2)
+
+Every chat completion — any provider, plus each stage of LLM Council — is given the current date unconditionally, and capable models get the web-search and code-interpreter tools without a manual per-message toggle, subject to existing admin gating.
+
+| Piece | Path |
+| ----- | ---- |
+| Date-context helper | [`backend/qwythos/utils/task.py`](../backend/qwythos/utils/task.py) `get_current_date_context()` (shares `_current_date_parts()` with `prompt_template()`'s `{{CURRENT_DATE}}`/`{{CURRENT_TIME}}`/`{{CURRENT_WEEKDAY}}` substitution) |
+| Injection: direct chat + Council stage 1 | [`backend/qwythos/utils/middleware.py`](../backend/qwythos/utils/middleware.py) `process_chat_payload()`, right after `metadata['system_prompt']` is set |
+| Injection: Council stage 2/3 | [`backend/qwythos/utils/council.py`](../backend/qwythos/utils/council.py) — these stages build fresh message lists that bypass `process_chat_payload()`, so they inject their own system message |
+| Web-search tool gating (unchanged) | [`backend/qwythos/utils/tools.py`](../backend/qwythos/utils/tools.py) `get_builtin_tools()` — still requires admin `ENABLE_WEB_SEARCH` + a configured search engine, per-model capability, and user permission |
+| Web-search / code-interpreter default toggles | [`src/lib/components/chat/Chat.svelte`](../src/lib/components/chat/Chat.svelte) `setDefaults()` — seeds the real `webSearchEnabled`/`codeInterpreterEnabled` toggle state (not a separate overlay) each time the selected model changes, from `$settings.webSearch`/`$settings.codeInterpreter` defaulting to `'always'` when a user has never touched the corresponding row in Settings → Interface → "Web Search in Chat" / "Code Interpreter in Chat" (an explicit `null`, from turning it back to "Default", is still respected) |
+
+**Trap:** seed the *actual* `webSearchEnabled`/`codeInterpreterEnabled` toggle state in `setDefaults()`, not a separate `raw || defaultOn` overlay value used only for the request payload. An OR-based overlay was tried first and reverted: the message-input switch is bound to the raw toggle, so it would show "off" while the feature was actually active, and — worse — toggling it off manually would have no effect, since the OR would keep forcing it active. Seeding the raw toggle directly keeps the visible switch, the request payload, and manual opt-out all in sync through one value.
+
+**Trap:** do not fold the date line into `metadata['system_prompt']` itself — that value is replayed verbatim into native tool-call-loop restores and into subagent/timer runs that may fire on a later day. The date is injected straight into `form_data['messages']` instead.
 
 ### Retrieval path
 

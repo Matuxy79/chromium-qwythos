@@ -179,6 +179,135 @@ export const showFileNavPath: Writable<string | null> = writable(null);
 export const showFileNavDir: Writable<string | null> = writable(null);
 export const selectedTerminalId: Writable<string | null> = writable(null);
 
+// ---------------------------------------------------------------------------
+// LLM Council live deliberation state (drives the Council sidebar panel)
+// ---------------------------------------------------------------------------
+export type CouncilModelStatus = 'waiting' | 'thinking' | 'completed' | 'failed';
+
+export type CouncilModelState = {
+	id: string;
+	label: string;
+	status: CouncilModelStatus;
+	answer: string | null;
+	ballot: string[] | null;
+	rank: number | null;
+	avgRank: number | null;
+};
+
+export type CouncilRankingEntry = {
+	model: string;
+	label: string;
+	rank: number;
+	avgRank: number | null;
+};
+
+export type CouncilState = {
+	active: boolean;
+	chatId: string | null;
+	messageId: string | null;
+	// 0 = idle, 1 = collecting answers, 2 = peer ranking, 3 = chairman synthesis, 4 = complete
+	stage: number;
+	question: string | null;
+	chairman: string | null;
+	models: CouncilModelState[];
+	ranking: CouncilRankingEntry[];
+	finalAnswer: string | null;
+	error: string | null;
+};
+
+export const initialCouncilState = (): CouncilState => ({
+	active: false,
+	chatId: null,
+	messageId: null,
+	stage: 0,
+	question: null,
+	chairman: null,
+	models: [],
+	ranking: [],
+	finalAnswer: null,
+	error: null
+});
+
+export const councilState: Writable<CouncilState> = writable(initialCouncilState());
+
+// One-shot request to open the Council panel (set when a deliberation starts)
+export const showCouncil = writable(false);
+
+export const applyCouncilEvent = (
+	state: CouncilState,
+	data: any,
+	chatId: string,
+	messageId: string
+): CouncilState => {
+	switch (data?.action) {
+		case 'start':
+			return {
+				...initialCouncilState(),
+				active: true,
+				chatId,
+				messageId,
+				stage: 1,
+				question: data.question ?? null,
+				chairman: data.chairman ?? null,
+				models: (data.models ?? []).map((m: any) => ({
+					id: m.id,
+					label: m.label,
+					status: 'waiting' as CouncilModelStatus,
+					answer: null,
+					ballot: null,
+					rank: null,
+					avgRank: null
+				}))
+			};
+		case 'stage':
+			return { ...state, stage: data.stage ?? state.stage };
+		case 'model':
+			return {
+				...state,
+				models: state.models.map((m) =>
+					m.id === data.model
+						? { ...m, status: data.status ?? m.status, answer: data.answer ?? m.answer }
+						: m
+				)
+			};
+		case 'ballot':
+			return {
+				...state,
+				models: state.models.map((m) =>
+					m.id === data.model ? { ...m, ballot: data.ballot ?? null } : m
+				)
+			};
+		case 'ranking': {
+			const ranking = (data.ranking ?? []).map((r: any) => ({
+				model: r.model,
+				label: r.label ?? '',
+				rank: r.rank,
+				avgRank: r.avg_rank ?? r.avgRank ?? null
+			})) as CouncilRankingEntry[];
+			return {
+				...state,
+				ranking,
+				models: state.models.map((m) => {
+					const entry = ranking.find((r) => r.model === m.id);
+					return entry ? { ...m, rank: entry.rank, avgRank: entry.avgRank } : m;
+				})
+			};
+		}
+		case 'final':
+			return {
+				...state,
+				finalAnswer: data.final_answer ?? null,
+				chairman: data.chairman ?? state.chairman
+			};
+		case 'done':
+			return { ...state, active: false, stage: 4 };
+		case 'error':
+			return { ...state, active: false, error: data.error ?? null };
+		default:
+			return state;
+	}
+};
+
 export const artifactCode = writable(null);
 export const artifactContents = writable(null);
 

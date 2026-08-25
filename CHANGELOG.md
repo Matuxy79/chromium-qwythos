@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-08-25
+
+### Added
+
+- **Web search available by default.** Chat models — including each LLM Council member — now get the `search_web`/`fetch_url` tools automatically when an admin has web search configured and enabled, instead of requiring a manual per-message toggle. Users can still opt out for a single message, or switch back to manual-only in Settings → Interface → "Web Search in Chat". Deployments without a search engine configured are unaffected.
+- **Code Interpreter available by default.** Same idea, same opt-out: capable models now run with Code Interpreter on automatically (when an admin has it enabled) instead of needing the toggle re-clicked every chat. Controlled from the new "Code Interpreter in Chat" row right below the web search one in Settings → Interface.
+
+### Fixed
+
+- **Chat models had no idea what day it is.** A chat with no custom system prompt — the common case — never generated a system message at all, so the `{{CURRENT_DATE}}` substitution that already existed in the prompt-templating code never ran. Every chat completion, including each stage of LLM Council deliberation, now unconditionally carries a "Today's date is …" line so models can reason correctly about their own knowledge-cutoff recency instead of assuming nothing has happened since training.
+
 ## [0.12.0] - 2026-08-24
 
 ### Added

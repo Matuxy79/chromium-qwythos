@@ -1,5 +1,5 @@
 <script context="module" lang="ts">
-	let savedTab: 'controls' | 'files' | 'overview' = 'controls';
+	let savedTab: 'controls' | 'files' | 'overview' | 'council' = 'controls';
 </script>
 
 <script lang="ts">
@@ -16,6 +16,8 @@
 		showCallOverlay,
 		showArtifacts,
 		showEmbeds,
+		showCouncil,
+		councilState,
 		settings,
 		showFileNavPath,
 		selectedTerminalId,
@@ -30,6 +32,7 @@
 	import Drawer from '../common/Drawer.svelte';
 	import Artifacts from './Artifacts.svelte';
 	import Embeds from './ChatControls/Embeds.svelte';
+	import CouncilSidebar from './Council/CouncilSidebar.svelte';
 	// Several of the heaviest dependencies in the app hang off these tabs, and
 	// every one of the tabs is opt-in: Overview pulls @xyflow/svelte (~240KB),
 	// FileNav pulls @xterm (~340KB), and both file navs reach FilePreview ->
@@ -102,18 +105,31 @@
 				($user?.permissions?.features?.direct_tool_servers ?? true))) ||
 		(codeInterpreterEnabled && $config?.code?.interpreter_engine !== 'jupyter');
 	$: showOverviewTab = hasMessages;
+	$: showCouncilTab =
+		(models ?? []).some((m) => m?.council || m?.owned_by === 'council') ||
+		$councilState.models.length > 0 ||
+		$councilState.stage > 0;
 
 	// Tab fallback: if active tab becomes hidden, switch to next available
 	$: if (!showOverviewTab && activeTab === 'overview') activeTab = 'controls';
 	$: if (!showFilesTab && activeTab === 'files') activeTab = 'controls';
+	$: if (!showCouncilTab && activeTab === 'council') activeTab = 'controls';
 	$: if (!showControlsTab && activeTab === 'controls') {
-		if (showFilesTab) activeTab = 'files';
+		if (showCouncilTab) activeTab = 'council';
+		else if (showFilesTab) activeTab = 'files';
 		else if (showOverviewTab) activeTab = 'overview';
 	}
 
 	// Auto-close if there are no visible tabs
-	$: if (!showControlsTab && !showFilesTab && !showOverviewTab) {
+	$: if (!showControlsTab && !showFilesTab && !showOverviewTab && !showCouncilTab) {
 		showControls.set(false);
+	}
+
+	// Auto-open the Council panel when a deliberation starts (one-shot per run;
+	// closing the panel mid-run is respected until the next 'start' event)
+	$: if ($showCouncil) {
+		activeTab = 'council';
+		showControls.set(true);
 	}
 
 	// Auto-switch to Files tab when display_file is triggered
@@ -363,6 +379,17 @@
 										{$i18n.t('Overview')}
 									</button>
 								{/if}
+								{#if showCouncilTab}
+									<button
+										class="px-2.5 py-1 text-sm rounded-lg transition whitespace-nowrap {activeTab ===
+										'council'
+											? 'bg-gray-100/40 dark:bg-gray-800/25 font-normal text-gray-700 dark:text-gray-200'
+											: 'text-gray-500 dark:text-gray-400 hover:bg-gray-100/30 dark:hover:bg-gray-800/20 hover:text-gray-600 dark:hover:text-gray-300'}"
+										on:click={() => (activeTab = 'council')}
+									>
+										🏛️ {$i18n.t('Council')}
+									</button>
+								{/if}
 							</div>
 							<button
 								class="p-1 rounded-lg text-gray-500 dark:text-gray-400"
@@ -408,6 +435,8 @@
 								{#await loadPyodideFileNav() then { default: PyodideFileNav }}
 									<svelte:component this={PyodideFileNav} />
 								{/await}
+							{:else if activeTab === 'council'}
+								<CouncilSidebar />
 							{:else}
 								<Controls embed={true} {models} bind:chatFiles bind:params />
 							{/if}
@@ -514,6 +543,17 @@
 											{$i18n.t('Overview')}
 										</button>
 									{/if}
+									{#if showCouncilTab}
+										<button
+											class="px-2.5 py-1 text-sm rounded-lg transition whitespace-nowrap {activeTab ===
+											'council'
+												? 'bg-gray-100/40 dark:bg-gray-800/25 font-normal text-gray-700 dark:text-gray-200'
+												: 'text-gray-500 dark:text-gray-400 hover:bg-gray-100/30 dark:hover:bg-gray-800/20 hover:text-gray-600 dark:hover:text-gray-300'}"
+											on:click={() => (activeTab = 'council')}
+										>
+											🏛️ {$i18n.t('Council')}
+										</button>
+									{/if}
 								</div>
 								<button
 									class="p-1 rounded-lg text-gray-500 dark:text-gray-400"
@@ -569,6 +609,8 @@
 									{#await loadPyodideFileNav() then { default: PyodideFileNav }}
 										<svelte:component this={PyodideFileNav} overlay={dragged} />
 									{/await}
+								{:else if activeTab === 'council'}
+									<CouncilSidebar />
 								{:else}
 									<Controls embed={true} {models} bind:chatFiles bind:params />
 								{/if}

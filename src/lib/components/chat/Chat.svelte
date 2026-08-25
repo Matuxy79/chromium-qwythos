@@ -46,7 +46,10 @@
 		showFileNavPath,
 		showFileNavDir,
 		chatRequestQueues,
-		desktopEvent
+		desktopEvent,
+		councilState,
+		showCouncil,
+		applyCouncilEvent
 	} from '$lib/stores';
 	import { refreshChatList, refreshFolderChatLists } from '$lib/stores/chatList';
 
@@ -322,20 +325,17 @@
 	let pendingWebSearchPrompt: string | null = null;
 	let webSearchConfirmed = false;
 
-	$: {
-		const currentModels = atSelectedModel?.id ? [atSelectedModel.id] : selectedModels;
-		const allModelsSupportWebSearch =
-			currentModels.filter(
-				(model) => $models.find((m) => m.id === model)?.info?.meta?.capabilities?.web_search ?? true
-			).length === currentModels.length;
-
-		webSearchActive = Boolean(
-			$config?.features?.enable_web_search &&
-			($user?.role === 'admin' || $user?.permissions?.features?.web_search) &&
-			(webSearchEnabled ||
-				(allModelsSupportWebSearch && ($settings?.webSearch ?? false) === 'always'))
-		);
-	}
+	// webSearchEnabled/codeInterpreterEnabled are the actual per-message toggle
+	// state (bound into the message-input switch), pre-seeded to the user's
+	// "always" default in setDefaults() below. webSearchActive just re-applies
+	// the admin/permission gate on top so a stale toggle can't survive a
+	// config change mid-session; it deliberately does NOT OR in the settings
+	// default itself, or a manual toggle-off would have no way to stick.
+	$: webSearchActive = Boolean(
+		$config?.features?.enable_web_search &&
+		($user?.role === 'admin' || $user?.permissions?.features?.web_search) &&
+		webSearchEnabled
+	);
 
 	const openWebSearchConfirm = () => {
 		window.setTimeout(() => {
@@ -830,21 +830,37 @@
 					) {
 						imageGenerationEnabled = model.info.meta.defaultFeatureIds.includes('image_generation');
 					}
+				}
 
-					if (
-						model.info?.meta?.capabilities?.['web_search'] &&
-						$config?.features?.enable_web_search &&
-						($user?.role === 'admin' || $user?.permissions?.features?.web_search)
-					) {
+				// Web search / code interpreter: an admin-curated defaultFeatureIds list on
+				// the model wins when present; otherwise fall back to the user's global
+				// "Web Search in Chat" / "Code Interpreter in Chat" preference (Settings >
+				// Interface). undefined = never touched -> defaults to 'always'; explicit
+				// null (user picked "Default") is respected.
+				if (
+					model.info?.meta?.capabilities?.['web_search'] &&
+					$config?.features?.enable_web_search &&
+					($user?.role === 'admin' || $user?.permissions?.features?.web_search)
+				) {
+					if (model?.info?.meta?.defaultFeatureIds) {
 						webSearchEnabled = model.info.meta.defaultFeatureIds.includes('web_search');
+					} else {
+						const webSearchMode = $settings?.webSearch === undefined ? 'always' : $settings.webSearch;
+						webSearchEnabled = webSearchMode === 'always';
 					}
+				}
 
-					if (
-						model.info?.meta?.capabilities?.['code_interpreter'] &&
-						$config?.features?.enable_code_interpreter &&
-						($user?.role === 'admin' || $user?.permissions?.features?.code_interpreter)
-					) {
+				if (
+					model.info?.meta?.capabilities?.['code_interpreter'] &&
+					$config?.features?.enable_code_interpreter &&
+					($user?.role === 'admin' || $user?.permissions?.features?.code_interpreter)
+				) {
+					if (model?.info?.meta?.defaultFeatureIds) {
 						codeInterpreterEnabled = model.info.meta.defaultFeatureIds.includes('code_interpreter');
+					} else {
+						const codeInterpreterMode =
+							$settings?.codeInterpreter === undefined ? 'always' : $settings.codeInterpreter;
+						codeInterpreterEnabled = codeInterpreterMode === 'always';
 					}
 				}
 
@@ -978,6 +994,11 @@
 						message.statusHistory.push(data);
 					} else {
 						message.statusHistory = [data];
+					}
+				} else if (type === 'council') {
+					councilState.update((s) => applyCouncilEvent(s, data, event.chat_id, event.message_id));
+					if (data?.action === 'start') {
+						showCouncil.set(true);
 					}
 				} else if (type === 'context_compaction') {
 					handleContextCompactionStatus(data);

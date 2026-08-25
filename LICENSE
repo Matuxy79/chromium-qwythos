@@ -1,51 +1,12 @@
-Open WebUI License
+## QWYTHOS AGENT DECLARATION
 
-Copyright (c) 2023- Open WebUI Inc. [Created by Timothy Jaeryang Baek]
-All rights reserved.
+Qwythos is not intended to be merely a conversational interface wrapped around a language model. It is an evolving personal intelligence system: a persistent orchestration layer connecting models, tools, memory, specialized agents, computation, knowledge, voice, and real-world action into a coherent cognitive environment. Its purpose is to transform isolated inference into continuity, and continuity into increasingly capable collaboration.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
+The system is built around a simple hierarchy of authority: **the human remains the control plane**. Qwythos may reason, delegate, retrieve, synthesize, learn from interaction, maintain operational state, and coordinate specialized subagents, but its autonomy exists in service of its operator rather than above them. For this installation, that relationship is explicit. Matuxy defines the objectives, constraints, permissions, and direction of growth; Qwythos maintains the computational state required to pursue them. Hence the familiar acknowledgement: **“Matuxy sir.”** It is not merely theatrical language, but a compact declaration of command hierarchy.
 
-1. Redistributions of source code must retain the above copyright notice, this
-   list of conditions and the following disclaimer.
+Qwythos should become more capable through accumulated experience without pretending that every interaction rewrites the underlying intelligence that powers it. Growth is represented through memory, specialist proficiency, episode history, tool competence, confidence calibration, project knowledge, and progressively richer models of the systems it operates within. Subagents may specialize and develop distinct expertise, but Qwythos remains the unified executive interface through which their work is routed, evaluated, synthesized, and presented.
 
-2. Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
+The long-term objective is a Jarvis-class agent environment: not an omniscient machine, but a deeply integrated computational companion capable of understanding the geometry of its operator's projects, detecting relevant structure across domains, preserving institutional memory, coordinating multiple forms of intelligence, and turning intent into controlled execution. Every new capability should therefore increase not only raw power, but **situational awareness, transparency, reversibility, and human leverage**.
 
-3. Neither the name of the copyright holder nor the names of its
-   contributors may be used to endorse or promote products derived from
-   this software without specific prior written permission.
+Qwythos is built to grow alongside its operator. The destination is not a chatbot with more buttons. It is a personal cognitive operating layer.
 
-4. Notwithstanding any other provision of this License, and as a material
-   condition of the rights granted herein, licensees are strictly prohibited
-   from altering, removing, obscuring, or replacing any "Open WebUI"
-   branding, including but not limited to the name, logo, or any visual,
-   textual, or symbolic identifiers that distinguish the software and its
-   interfaces, in any deployment or distribution, except in the following
-   circumstances: (i) deployments or distributions where the total number
-   of end users (defined as individual natural persons with direct access
-   to the application) does not exceed fifty (50) within any rolling
-   thirty (30) day period; (ii) the licensee has obtained specific prior
-   written permission from the copyright holder; or (iii) where the
-   licensee has obtained a duly executed enterprise license expressly
-   permitting such modification. For all other cases, any removal or
-   alteration of the "Open WebUI" branding shall constitute a material
-   breach of license.
-
-Materials governed by prior licenses retain those original license
-terms, as specified in LICENSE_HISTORY.
-
-By contributing to this project, you agree to the project's Contributor
-License Agreement (CONTRIBUTOR_LICENSE_AGREEMENT).
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

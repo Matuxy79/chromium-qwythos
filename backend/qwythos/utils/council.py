@@ -31,6 +31,7 @@ from qwythos.utils.misc import (
     openai_chat_chunk_message_template,
     openai_chat_completion_message_template,
 )
+from qwythos.utils.task import get_current_date_context
 
 log = logging.getLogger(__name__)
 
@@ -251,6 +252,22 @@ async def _emit_status(event_emitter: Optional[Callable], description: str, done
         log.debug(f'LLM council: error emitting status: {exc}')
 
 
+# Max characters of each model's answer / final synthesis forwarded to the
+# live deliberation sidebar. Keeps socket payloads bounded while still giving
+# the UI enough text to portray what each model is saying.
+COUNCIL_ANSWER_PREVIEW_CHARS = 2000
+
+
+async def _emit_council(event_emitter: Optional[Callable], **payload) -> None:
+    """Emit a structured ``council`` event for the live deliberation sidebar."""
+    if not callable(event_emitter):
+        return
+    try:
+        await event_emitter({'type': 'council', 'data': payload})
+    except Exception as exc:
+        log.debug(f'LLM council: error emitting council event: {exc}')
+
+
 def _parse_ranking(text: str, labels: list[str]) -> Optional[list[str]]:
     """Parse a stage-2 ballot into an ordered list of labels, best first.
 
@@ -361,6 +378,14 @@ async def run_council_pipeline(
     labels = list(ascii_uppercase[: len(council_models)])
     stage1_messages = messages if messages else [{'role': 'user', 'content': question}]
 
+    await _emit_council(
+        event_emitter,
+        action='start',
+        question=question,
+        chairman=chairman,
+        models=[{'id': model_id, 'label': label} for label, model_id in zip(labels, council_models)],
+    )
+
     # ------------------------------------------------------------------
     # Stage 1 — individual responses (parallel)
     # ------------------------------------------------------------------
@@ -368,20 +393,32 @@ async def run_council_pipeline(
         event_emitter,
         f'LLM Council stage 1/3: collecting answers from {len(council_models)} models…',
     )
-    stage1_results = await asyncio.gather(
-        *(
-            _council_completion(
-                request,
-                user,
-                model_id,
-                stage1_messages,
-                tools=tools,
-                tools_dict=tools_dict,
-                files=files,
-            )
-            for model_id in council_models
+    await _emit_council(event_emitter, action='stage', stage=1)
+
+    async def _stage1_answer(model_id: str) -> Optional[str]:
+        await _emit_council(event_emitter, action='model', model=model_id, status='thinking')
+        text = await _council_completion(
+            request,
+            user,
+            model_id,
+            stage1_messages,
+            tools=tools,
+            tools_dict=tools_dict,
+            files=files,
         )
-    )
+        if text:
+            await _emit_council(
+                event_emitter,
+                action='model',
+                model=model_id,
+                status='completed',
+                answer=text[:COUNCIL_ANSWER_PREVIEW_CHARS],
+            )
+        else:
+            await _emit_council(event_emitter, action='model', model=model_id, status='failed')
+        return text
+
+    stage1_results = await asyncio.gather(*(_stage1_answer(model_id) for model_id in council_models))
 
     responses: dict[str, str] = {}  # label -> answer text
     answerers: dict[str, str] = {}  # label -> model_id
@@ -398,22 +435,42 @@ async def run_council_pipeline(
             'Error: the council could not proceed — fewer than 2 models produced an answer. '
             f'Failed models: {", ".join(failed_models) or "unknown"}.'
         )
+        await _emit_council(event_emitter, action='error', error=error)
         return {'error': error, 'text': error}
 
     active_labels = [label for label in labels if label in responses]
     anonymized = '\n\n'.join(f'Response {label}:\n{responses[label]}' for label in active_labels)
 
+    # Stage 2/3 build their own fresh message lists and never go through
+    # process_chat_payload(), so they need their own date context — Stage 1
+    # already gets one via the inherited stage1_messages.
+    date_context = get_current_date_context()
+
     # ------------------------------------------------------------------
     # Stage 2 — peer ranking (parallel, anonymized)
     # ------------------------------------------------------------------
     await _emit_status(event_emitter, 'LLM Council stage 2/3: peer ranking of anonymized answers…')
+    await _emit_council(event_emitter, action='stage', stage=2)
     ranking_prompt = STAGE2_RANKING_PROMPT.format(question=question, responses=anonymized)
-    ballots = await asyncio.gather(
-        *(
-            _council_completion(request, user, model_id, [{'role': 'user', 'content': ranking_prompt}])
-            for model_id in council_models
+
+    async def _stage2_ballot(model_id: str) -> Optional[str]:
+        await _emit_council(event_emitter, action='model', model=model_id, status='thinking')
+        ballot = await _council_completion(
+            request,
+            user,
+            model_id,
+            [{'role': 'system', 'content': date_context}, {'role': 'user', 'content': ranking_prompt}],
         )
-    )
+        if ballot:
+            parsed = _parse_ranking(ballot, active_labels)
+            if parsed:
+                await _emit_council(event_emitter, action='ballot', model=model_id, ballot=parsed)
+            await _emit_council(event_emitter, action='model', model=model_id, status='completed')
+        else:
+            await _emit_council(event_emitter, action='model', model=model_id, status='failed')
+        return ballot
+
+    ballots = await asyncio.gather(*(_stage2_ballot(model_id) for model_id in council_models))
 
     # Aggregate: average position across valid ballots (lower = better)
     position_sums = {label: 0.0 for label in active_labels}
@@ -434,6 +491,20 @@ async def run_council_pipeline(
         log.warning('LLM council: no parseable stage-2 ballots; ranking falls back to council order')
         aggregate = list(active_labels)
 
+    await _emit_council(
+        event_emitter,
+        action='ranking',
+        ranking=[
+            {
+                'model': answerers[label],
+                'label': label,
+                'rank': i + 1,
+                'avg_rank': round(position_sums[label] / ballot_count, 2) if ballot_count else None,
+            }
+            for i, label in enumerate(aggregate)
+        ],
+    )
+
     ranking_lines = [
         f'{i + 1}. Response {label} (avg rank {position_sums[label] / ballot_count:.2f})'
         if ballot_count
@@ -446,19 +517,33 @@ async def run_council_pipeline(
     # Stage 3 — chairman synthesis
     # ------------------------------------------------------------------
     await _emit_status(event_emitter, f'LLM Council stage 3/3: chairman synthesis ({chairman})…')
+    await _emit_council(event_emitter, action='stage', stage=3)
+    await _emit_council(event_emitter, action='model', model=chairman, status='thinking')
     chairman_prompt = STAGE3_CHAIRMAN_PROMPT.format(
         question=question,
         responses=anonymized,
         ranking=ranking_summary,
     )
-    final_answer = await _council_completion(request, user, chairman, [{'role': 'user', 'content': chairman_prompt}])
+    final_answer = await _council_completion(
+        request,
+        user,
+        chairman,
+        [{'role': 'system', 'content': date_context}, {'role': 'user', 'content': chairman_prompt}],
+    )
 
     if not final_answer:
         # Fall back to the best-ranked council answer rather than failing outright
         final_answer = responses[aggregate[0]]
         log.warning('LLM council: chairman synthesis failed; returning top-ranked response')
 
+    await _emit_council(
+        event_emitter,
+        action='final',
+        chairman=chairman,
+        final_answer=(final_answer or '')[:COUNCIL_ANSWER_PREVIEW_CHARS],
+    )
     await _emit_status(event_emitter, 'LLM Council: deliberation complete', done=True)
+    await _emit_council(event_emitter, action='done')
 
     deanon = {f'Response {label}': answerers[label] for label in active_labels}
     text_parts = [

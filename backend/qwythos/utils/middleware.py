@@ -124,6 +124,7 @@ from qwythos.utils.plugin import load_function_module_by_id
 from qwythos.utils.response import merge_usage, normalize_usage
 from qwythos.utils.sanitize import sanitize_code
 from qwythos.utils.task import (
+    get_current_date_context,
     get_task_model_id,
     rag_template,
     tools_function_calling_generation_template,
@@ -2947,6 +2948,14 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             f'{resolved_model_system_prompt}\n{system_content}' if system_content else resolved_model_system_prompt
         )
     metadata['system_prompt'] = system_content or None
+
+    # Models otherwise have no way to know what day it is, which leaves them
+    # unable to reason about their own knowledge-cutoff recency. Prepend this
+    # unconditionally (not folded into metadata['system_prompt'], which is
+    # replayed verbatim into later tool-call-loop restores and into
+    # subagent/timer runs that may fire on a different day).
+    form_data['messages'] = add_or_update_system_message(get_current_date_context(), form_data['messages'])
+
     metadata['user_prompt'] = get_last_user_message(form_data['messages'])
     metadata['sources'] = sources[:] if sources else []
 

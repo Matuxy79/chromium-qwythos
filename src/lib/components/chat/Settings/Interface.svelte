@@ -99,6 +99,7 @@
 	let hapticFeedback = false;
 
 	let webSearch = null;
+	let codeInterpreter = null;
 
 	let iframeSandboxAllowSameOrigin = false;
 	let iframeSandboxAllowForms = false;
@@ -198,6 +199,11 @@
 		saveSettings({ webSearch: webSearch });
 	};
 
+	const toggleCodeInterpreter = async () => {
+		codeInterpreter = codeInterpreter === null ? 'always' : null;
+		saveSettings({ codeInterpreter: codeInterpreter });
+	};
+
 	const setTextScaleHandler = (scale) => {
 		textScale = scale;
 		setTextScale(textScale);
@@ -283,7 +289,10 @@
 		}
 
 		backgroundImageUrl = $settings?.backgroundImageUrl ?? null;
-		webSearch = $settings?.webSearch ?? null;
+		// undefined = never touched -> defaults to 'always' now; explicit null (user picked
+		// "Default" before) stays respected. Keeps this label in sync with Chat.svelte's default.
+		webSearch = $settings?.webSearch === undefined ? 'always' : $settings.webSearch;
+		codeInterpreter = $settings?.codeInterpreter === undefined ? 'always' : $settings.codeInterpreter;
 
 		textScale = $settings?.textScale ?? null;
 
@@ -1256,6 +1265,30 @@
 				</div>
 				<p class={settingDescriptionClass}>
 					{$i18n.t('Set web search availability for new chats.')}
+				</p>
+			</div>
+
+			<div>
+				<div class={settingRowClass}>
+					<div id="code-interpreter-in-chat-label" class={settingLabelClass}>
+						{$i18n.t('Code Interpreter in Chat')}
+					</div>
+
+					<button
+						aria-labelledby="code-interpreter-in-chat-label code-interpreter-state"
+						class={actionButtonClass}
+						on:click={() => {
+							toggleCodeInterpreter();
+						}}
+						type="button"
+					>
+						<span id="code-interpreter-state"
+							>{codeInterpreter === 'always' ? $i18n.t('Always') : $i18n.t('Default')}</span
+						>
+					</button>
+				</div>
+				<p class={settingDescriptionClass}>
+					{$i18n.t('Set code interpreter availability for new chats.')}
 				</p>
 			</div>
 

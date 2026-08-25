@@ -33,6 +33,20 @@ def prompt_variables_template(template: str, variables: dict[str, str]) -> str:
     return template
 
 
+def _current_date_parts() -> dict[str, str]:
+    current_date = datetime.now()
+    return {
+        'date': current_date.strftime('%Y-%m-%d'),
+        'time': current_date.strftime('%I:%M:%S %p'),
+        'weekday': current_date.strftime('%A'),
+    }
+
+
+def get_current_date_context() -> str:
+    parts = _current_date_parts()
+    return f"Today's date is {parts['weekday']}, {parts['date']} (current time {parts['time']})."
+
+
 async def prompt_template(template: str, user: Optional[Any] = None) -> str:
     USER_VARIABLES = {}
 
@@ -80,18 +94,12 @@ async def prompt_template(template: str, user: Optional[Any] = None) -> str:
                 'groups': groups,
             }
 
-    # Get the current date
-    current_date = datetime.now()
+    date_parts = _current_date_parts()
 
-    # Format the date to YYYY-MM-DD
-    formatted_date = current_date.strftime('%Y-%m-%d')
-    formatted_time = current_date.strftime('%I:%M:%S %p')
-    formatted_weekday = current_date.strftime('%A')
-
-    template = template.replace('{{CURRENT_DATE}}', formatted_date)
-    template = template.replace('{{CURRENT_TIME}}', formatted_time)
-    template = template.replace('{{CURRENT_DATETIME}}', f'{formatted_date} {formatted_time}')
-    template = template.replace('{{CURRENT_WEEKDAY}}', formatted_weekday)
+    template = template.replace('{{CURRENT_DATE}}', date_parts['date'])
+    template = template.replace('{{CURRENT_TIME}}', date_parts['time'])
+    template = template.replace('{{CURRENT_DATETIME}}', f"{date_parts['date']} {date_parts['time']}")
+    template = template.replace('{{CURRENT_WEEKDAY}}', date_parts['weekday'])
 
     template = template.replace('{{USER_NAME}}', USER_VARIABLES.get('name', 'Unknown'))
     template = template.replace('{{USER_EMAIL}}', USER_VARIABLES.get('email', 'Unknown'))
