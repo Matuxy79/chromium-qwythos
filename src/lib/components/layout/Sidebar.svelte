@@ -494,30 +494,37 @@
 		draggedOver = false; // Reset draggedOver status after drop
 	};
 
-	let touchstart;
-	let touchend;
+	let touchStart: { clientX: number; clientY: number } | null = null;
 
-	function checkDirection() {
-		const screenWidth = window.innerWidth;
-		const swipeDistance = Math.abs(touchend.screenX - touchstart.screenX);
-		if (touchstart.clientX < 40 && swipeDistance >= screenWidth / 8) {
-			if (touchend.screenX < touchstart.screenX) {
-				showSidebar.set(false);
-			}
-			if (touchend.screenX > touchstart.screenX) {
-				showSidebar.set(true);
-			}
-		}
-	}
+	const onTouchStart = (e: TouchEvent) => {
+		const point = e.changedTouches[0];
+		if (!$mobile || !point) return;
 
-	const onTouchStart = (e) => {
-		touchstart = e.changedTouches[0];
-		console.log(touchstart.clientX);
+		touchStart = { clientX: point.clientX, clientY: point.clientY };
 	};
 
-	const onTouchEnd = (e) => {
-		touchend = e.changedTouches[0];
-		checkDirection();
+	const onTouchEnd = (e: TouchEvent) => {
+		const point = e.changedTouches[0];
+		if (!$mobile || !touchStart || !point) return;
+
+		const deltaX = point.clientX - touchStart.clientX;
+		const deltaY = point.clientY - touchStart.clientY;
+		const swipeDistance = Math.abs(deltaX);
+		const verticalDistance = Math.abs(deltaY);
+		const swipeThreshold = Math.max(48, window.innerWidth / 8);
+		const sidebarBoundary = Math.min($sidebarWidth ?? 245, window.innerWidth * 0.85);
+		const startedAtEdge = touchStart.clientX <= 32;
+		const startedInsideSidebar = touchStart.clientX <= sidebarBoundary;
+
+		if (swipeDistance >= swipeThreshold && swipeDistance > verticalDistance * 1.25) {
+			if (!$showSidebar && startedAtEdge && deltaX > 0) {
+				showSidebar.set(true);
+			} else if ($showSidebar && startedInsideSidebar && deltaX < 0) {
+				showSidebar.set(false);
+			}
+		}
+
+		touchStart = null;
 	};
 
 	const onKeyDown = (e) => {
@@ -1198,18 +1205,23 @@
 								>
 									<a
 										id="sidebar-{itemId}-button"
-										class="grow flex items-center space-x-2 rounded-xl px-2 py-1.5 transition {itemId ===
-										activeMenuItemId
-											? ($settings?.highContrastMode ?? false)
-												? 'bg-black/[0.035] dark:bg-white/[0.06]'
-												: 'bg-black/[0.035] dark:bg-white/[0.045]'
-											: 'hover:bg-gray-50 dark:hover:bg-gray-900'}"
+								class="group grow flex min-h-11 items-center space-x-2 rounded-xl border border-transparent px-2 py-1.5 transition active:scale-[0.985] {itemId ===
+								activeMenuItemId
+									? ($settings?.highContrastMode ?? false)
+										? 'border-gray-300 bg-black/[0.035] dark:border-gray-700 dark:bg-white/[0.06]'
+										: 'border-violet-200/80 bg-linear-to-r from-violet-500/10 to-cyan-400/5 dark:border-violet-500/30 dark:from-violet-500/15 dark:to-cyan-400/10'
+									: 'hover:border-gray-200/80 hover:bg-gray-50 dark:hover:border-gray-800 dark:hover:bg-gray-900'}"
 										href={meta.href}
 										on:click={itemClickHandler}
 										draggable="false"
 										aria-label={$i18n.t(meta.label)}
 									>
-										<div class="self-center flex size-4 shrink-0 items-center justify-center">
+								<div
+									class="self-center flex size-8 shrink-0 items-center justify-center rounded-lg transition {itemId ===
+									activeMenuItemId
+										? 'bg-violet-500/15 text-violet-600 shadow-[0_0_18px_rgba(139,92,246,0.2)] dark:bg-violet-400/15 dark:text-violet-300'
+										: 'text-gray-500 group-hover:bg-gray-100 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:bg-gray-800 dark:group-hover:text-gray-200'}"
+								>
 											{#if itemId === 'notes'}
 												<NotesIcon className="size-4" strokeWidth="1.5" />
 											{:else if itemId === 'workspace'}
@@ -1223,10 +1235,17 @@
 											{/if}
 										</div>
 
-										<div class="flex self-center translate-y-[0.5px]">
-											<div class=" self-center text-[13px] leading-5">{$i18n.t(meta.label)}</div>
-										</div>
-									</a>
+								<div class="flex flex-1 self-center translate-y-[0.5px]">
+									<div class=" self-center text-[13px] leading-5">{$i18n.t(meta.label)}</div>
+								</div>
+
+								{#if itemId === activeMenuItemId}
+									<span
+										class="rounded-full bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-violet-600 dark:bg-violet-400/10 dark:text-violet-300"
+										>{$i18n.t('Active')}</span
+									>
+								{/if}
+							</a>
 								</div>
 							{/if}
 						{/each}

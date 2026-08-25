@@ -15,8 +15,7 @@
 	import CalendarEventModal from '$lib/components/calendar/CalendarEventModal.svelte';
 	import CreateCalendarModal from '$lib/components/calendar/CreateCalendarModal.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
-	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import SidebarIcon from '$lib/components/icons/Sidebar.svelte';
+	import MobileSidebarToggle from '$lib/components/layout/MobileSidebarToggle.svelte';
 	import Select from '$lib/components/common/Select.svelte';
 	import Check from '$lib/components/icons/Check.svelte';
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
@@ -232,20 +231,7 @@
 			<div class="flex items-center gap-0.5 md:gap-1">
 				{#if $mobile}
 					<div class="{$showSidebar ? 'md:hidden' : ''} flex flex-none items-center">
-						<Tooltip
-							content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
-							interactive={true}
-						>
-							<button
-								id="sidebar-toggle-button"
-								class="cursor-pointer flex rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition"
-								on:click={() => showSidebar.set(!$showSidebar)}
-							>
-								<div class="self-center p-1.5">
-									<SidebarIcon className="size-4" />
-								</div>
-							</button>
-						</Tooltip>
+						<MobileSidebarToggle />
 					</div>
 				{/if}
 

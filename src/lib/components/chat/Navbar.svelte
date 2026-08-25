@@ -21,12 +21,12 @@
 
 	import ShareChatModal from '../chat/ShareChatModal.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
+	import MobileSidebarToggle from '$lib/components/layout/MobileSidebarToggle.svelte';
 	import Menu from '$lib/components/layout/Navbar/Menu.svelte';
 	import AdjustmentsHorizontal from '../icons/AdjustmentsHorizontal.svelte';
 
 	import PencilSquare from '../icons/PencilSquare.svelte';
 	import Banner from '../common/Banner.svelte';
-	import Sidebar from '../icons/Sidebar.svelte';
 
 	import ChatBubbleDotted from '../icons/ChatBubbleDotted.svelte';
 	import ChatBubbleDottedChecked from '../icons/ChatBubbleDottedChecked.svelte';
@@ -95,20 +95,7 @@
 			<div class="flex items-center w-full max-w-full">
 				{#if $mobile && !$showSidebar}
 					<div class="mr-1 flex flex-none items-center self-center">
-						<Tooltip content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}>
-							<button
-								id="sidebar-toggle-button"
-								class="flex cursor-pointer rounded-lg text-gray-500 transition hover:bg-gray-50/40 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-200"
-								on:click={() => {
-									showSidebar.set(!$showSidebar);
-								}}
-								aria-label={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
-							>
-								<div class="self-center p-1.5">
-									<Sidebar className="size-4" />
-								</div>
-							</button>
-						</Tooltip>
+						<MobileSidebarToggle />
 					</div>
 				{/if}
 

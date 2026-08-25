@@ -78,9 +78,9 @@
 	import EllipsisHorizontal from '../icons/EllipsisHorizontal.svelte';
 	import Sparkles from '../icons/Sparkles.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
+	import MobileSidebarToggle from '$lib/components/layout/MobileSidebarToggle.svelte';
 	import ArrowUturnLeft from '../icons/ArrowUturnLeft.svelte';
 	import ArrowUturnRight from '../icons/ArrowUturnRight.svelte';
-	import Sidebar from '../icons/Sidebar.svelte';
 	import ChatBubbleOval from '../icons/ChatBubbleOval.svelte';
 
 	export let id: null | string = null;
@@ -1006,23 +1006,7 @@ ${content}
 					<div class="shrink-0 w-full flex justify-between items-center px-3">
 						<div class="w-full min-w-0 flex items-center">
 							{#if $mobile}
-								<Tooltip
-									content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
-								>
-									<button
-										id="sidebar-toggle-button"
-										class=" cursor-pointer flex rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition cursor-"
-										aria-label={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
-										type="button"
-										on:click={() => {
-											showSidebar.set(!$showSidebar);
-										}}
-									>
-										<div class=" self-center p-1.5">
-											<Sidebar className="size-4" />
-										</div>
-									</button>
-								</Tooltip>
+								<MobileSidebarToggle />
 							{/if}
 
 							<input

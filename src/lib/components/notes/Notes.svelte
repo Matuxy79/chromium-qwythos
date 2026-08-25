@@ -37,12 +37,12 @@
 	import Search from '../icons/Search.svelte';
 	import Spinner from '../common/Spinner.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
+	import MobileSidebarToggle from '$lib/components/layout/MobileSidebarToggle.svelte';
 	import NoteMenu from './Notes/NoteMenu.svelte';
 	import FilesOverlay from '../chat/MessageInput/FilesOverlay.svelte';
 	import XMark from '../icons/XMark.svelte';
 	import DropdownOptions from '../common/DropdownOptions.svelte';
 	import Loader from '../common/Loader.svelte';
-	import SidebarIcon from '../icons/Sidebar.svelte';
 	import SplitCreateButton from '../common/SplitCreateButton.svelte';
 	import ChevronDown from '../icons/ChevronDown.svelte';
 	import ChevronUp from '../icons/ChevronUp.svelte';
@@ -373,22 +373,7 @@
 		<div class="flex items-center gap-0.5 md:gap-1 mb-1">
 			{#if $mobile}
 				<div class="{$showSidebar ? 'md:hidden' : ''} flex flex-none items-center">
-					<Tooltip
-						content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
-						interactive={true}
-					>
-						<button
-							id="sidebar-toggle-button"
-							class="cursor-pointer flex rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition"
-							on:click={() => {
-								showSidebar.set(!$showSidebar);
-							}}
-						>
-							<div class="self-center p-1.5">
-								<SidebarIcon className="size-4" />
-							</div>
-						</button>
-					</Tooltip>
+					<MobileSidebarToggle />
 				</div>
 			{/if}
 

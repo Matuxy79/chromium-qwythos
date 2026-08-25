@@ -7,8 +7,7 @@
 	import { getAutomationItems } from '$lib/apis/automations';
 	import type i18nType from '$lib/i18n';
 	import { formatNumber } from '$lib/utils';
-	import SidebarIcon from '$lib/components/icons/Sidebar.svelte';
-	import Tooltip from '$lib/components/common/Tooltip.svelte';
+	import MobileSidebarToggle from '$lib/components/layout/MobileSidebarToggle.svelte';
 
 	const i18n: typeof i18nType = getContext('i18n');
 
@@ -76,19 +75,7 @@
 			<div class="flex items-center gap-0.5 md:gap-1">
 				{#if $mobile}
 					<div class="{$showSidebar ? 'md:hidden' : ''} flex flex-none items-center">
-						<Tooltip content={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}>
-							<button
-								id="sidebar-toggle-button"
-								class="flex size-7 items-center justify-center text-gray-400 transition"
-								aria-label={$showSidebar ? $i18n.t('Close Sidebar') : $i18n.t('Open Sidebar')}
-								on:click={() => {
-									showSidebar.set(!$showSidebar);
-								}}
-								type="button"
-							>
-								<SidebarIcon className="size-4" />
-							</button>
-						</Tooltip>
+						<MobileSidebarToggle />
 					</div>
 				{/if}
 
