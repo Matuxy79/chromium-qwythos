@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Web search available by default.** Chat models — including each LLM Council member — now get the `search_web`/`fetch_url` tools automatically when an admin has web search configured and enabled, instead of requiring a manual per-message toggle. Users can still opt out for a single message, or switch back to manual-only in Settings → Interface → "Web Search in Chat". Deployments without a search engine configured are unaffected.
+- **Web search works out of the box.** `ENABLE_WEB_SEARCH` now defaults to on with `WEB_SEARCH_ENGINE=duckduckgo` — the one engine that needs no API key and no separate service to run, so a fresh install can actually search the web with zero setup. Override `WEB_SEARCH_ENGINE`/Admin Settings to switch to Tavily, Brave, a self-hosted SearXNG, etc. Chat models — including each LLM Council member — also get the `search_web`/`fetch_url` tools automatically instead of requiring a manual per-message toggle; users can opt out for a single message, or switch back to manual-only in Settings → Interface → "Web Search in Chat".
 - **Code Interpreter available by default.** Same idea, same opt-out: capable models now run with Code Interpreter on automatically (when an admin has it enabled) instead of needing the toggle re-clicked every chat. Controlled from the new "Code Interpreter in Chat" row right below the web search one in Settings → Interface.
 
 ### Fixed

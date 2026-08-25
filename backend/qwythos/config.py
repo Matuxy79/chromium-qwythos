@@ -1157,7 +1157,7 @@ YOUTUBE_LOADER_PROXY_URL = os.getenv('YOUTUBE_LOADER_PROXY_URL', '')
 # Web Search
 ####################################
 
-ENABLE_WEB_SEARCH = os.getenv('ENABLE_WEB_SEARCH', 'False').lower() == 'true'
+ENABLE_WEB_SEARCH = os.getenv('ENABLE_WEB_SEARCH', 'True').lower() == 'true'
 
 ENABLE_WEB_SEARCH_CONFIRMATION = os.getenv('ENABLE_WEB_SEARCH_CONFIRMATION', 'False').lower() == 'true'
 
@@ -1166,7 +1166,10 @@ WEB_SEARCH_CONFIRMATION_CONTENT = os.getenv(
     'Your query will be sent to the configured web search provider.',
 )
 
-WEB_SEARCH_ENGINE = os.getenv('WEB_SEARCH_ENGINE', '')
+# DuckDuckGo needs no API key and no separate service (unlike SearXNG/Tavily/
+# Brave/etc.), so it's the only engine that can be a safe out-of-the-box
+# default. Admins can still override via WEB_SEARCH_ENGINE or Admin Settings.
+WEB_SEARCH_ENGINE = os.getenv('WEB_SEARCH_ENGINE', 'duckduckgo')
 
 BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL = (
     os.getenv('BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL', 'False').lower() == 'true'
