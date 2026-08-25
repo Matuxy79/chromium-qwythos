@@ -136,10 +136,6 @@ COPY --chown=$UID:$GID --from=build /app/build /app/build
 COPY --chown=$UID:$GID --from=build /app/CHANGELOG.md /app/CHANGELOG.md
 COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
 COPY --chown=$UID:$GID --from=build /app/LICENSE /app/LICENSE
-COPY --chown=$UID:$GID --from=build /app/LICENSE_HISTORY /app/LICENSE_HISTORY
-COPY --chown=$UID:$GID --from=build /app/LICENSE_NOTICE /app/LICENSE_NOTICE
-COPY --chown=$UID:$GID --from=build /app/FORK_NOTICE.md /app/FORK_NOTICE.md
-COPY --chown=$UID:$GID --from=build /app/THIRD_PARTY_NOTICES.md /app/THIRD_PARTY_NOTICES.md
 
 # copy backend files
 COPY --chown=$UID:$GID ./backend .
