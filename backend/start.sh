@@ -27,6 +27,49 @@ if [[ "${WEB_LOADER_ENGINE,,}" == "playwright" ]]; then
   python -c "import nltk; nltk.download('punkt_tab')"
 fi
 
+# ── Persistence / volume mount detection ─────────────────────────────────────
+# Warn loudly when the data directory is on ephemeral container storage.
+# On Railway, Docker, or any host where the data directory is not a mounted
+# volume, all chats, API keys, and user accounts are LOST on redeploy.
+
+DATA_DIR_PATH="${DATA_DIR:-/app/backend/data}"
+
+# Detect Railway environment
+IS_RAILWAY=false
+if [[ -n "${RAILWAY_ENVIRONMENT:-}" || -n "${RAILWAY_PROJECT_ID:-}" || -n "${RAILWAY_SERVICE_ID:-}" ]]; then
+  IS_RAILWAY=true
+fi
+
+# Check if DATA_DIR is a mounted volume (Linux containers only)
+if [[ "$(uname -s)" == "Linux" ]] && command -v mountpoint >/dev/null 2>&1; then
+  if ! mountpoint -q "$DATA_DIR_PATH" 2>/dev/null; then
+    echo ""
+    echo "⚠️  WARNING: Data directory is NOT a mounted volume!"
+    echo "   Path: ${DATA_DIR_PATH}"
+    echo ""
+    if [[ "$IS_RAILWAY" == "true" ]]; then
+      echo "   Railway detected. Attach a Volume at ${DATA_DIR_PATH} in the Railway dashboard"
+      echo "   (Settings → Volumes) or ALL data will be lost on every deploy/rebuild:"
+      echo "     • Chat history"
+      echo "     • API keys (OpenRouter, OpenAI, etc.)"
+      echo "     • User accounts and sessions"
+      echo "     • Uploaded files"
+      echo ""
+      echo "   Alternatively, set these Railway environment variables so API keys"
+      echo "   are re-seeded from env on every deploy (requires code support):"
+      echo "     • OPENROUTER_API_KEY"
+      echo "     • OPENROUTER_API_BASE_URL"
+    else
+      echo "   Mount a persistent volume at ${DATA_DIR_PATH}, e.g.:"
+      echo "     docker run -v qwythos-data:${DATA_DIR_PATH} ..."
+      echo "     docker-compose: volumes: - qwythos:${DATA_DIR_PATH}"
+    fi
+    echo ""
+  else
+    echo "✓ Data directory is a mounted volume: ${DATA_DIR_PATH}"
+  fi
+fi
+
 # ── Secret key setup ─────────────────────────────────────────────────────────
 
 KEY_FILE="${WEBUI_SECRET_KEY_FILE:-.webui_secret_key}"

@@ -1,0 +1,9 @@
+# Chat persistence directory (installed package layout)
+#
+# When Qwythos runs as an installed Python package, DATA_DIR resolves here
+# instead of backend/data/. The env.py migration moves data from the old
+# location here on first run and creates a zip backup.
+#
+# Same contents as backend/data/ — see that .gitkeep for details.
+#
+# Do NOT commit the contents of this directory — it contains private user data.

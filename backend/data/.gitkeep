@@ -1,0 +1,15 @@
+# Chat persistence directory
+#
+# This directory stores all runtime data that must survive app rebuilds:
+#   - webui.db          SQLite database (all chat history, users, settings)
+#   - uploads/          User-uploaded files
+#   - cache/            Application cache (tiktoken, etc.)
+#   - desktop-webview/  Browser profile for the desktop launcher (auth tokens)
+#   - desktop-server.log  Server log (ignored in .gitignore)
+#
+# Persistence across builds:
+#   - Docker:    Mount a volume at /app/backend/data (see docker-compose.yaml)
+#   - Desktop:   Data lives here automatically (desktop/app.py)
+#   - Local dev: Data lives here automatically (backend/qwythos/env.py)
+#
+# Do NOT commit the contents of this directory — it contains private user data.

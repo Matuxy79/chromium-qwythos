@@ -55,6 +55,7 @@ from qwythos.config import (
     ENABLE_ONEDRIVE_PERSONAL,
     # OpenAI
     ENV,
+    FORCE_ENV_CONFIG,
     FRONTEND_BUILD_DIR,
     GOOGLE_DRIVE_API_KEY,
     GOOGLE_DRIVE_CLIENT_ID,
@@ -80,6 +81,7 @@ from qwythos.env import (
     AUDIT_LOG_LEVEL,
     BYPASS_MODEL_ACCESS_CONTROL,
     CHANGELOG,
+    DATA_DIR,
     DEPLOYMENT_ID,
     ENABLE_AUDIT_GET_REQUESTS,
     ENABLE_COMPRESSION_MIDDLEWARE,
@@ -100,6 +102,7 @@ from qwythos.env import (
     ENABLE_WEBSOCKET_SUPPORT,
     GLOBAL_LOG_LEVEL,
     INSTANCE_ID,
+    IS_RAILWAY,
     LICENSE_KEY,
     LOG_FORMAT,
     MAX_BODY_LOG_SIZE,
@@ -463,6 +466,29 @@ async def lifespan(app: FastAPI):
 
     await import_legacy_config_json()
     await seed_registered_defaults()
+
+    # ── Deployment persistence status ────────────────────────────────────────
+    # Log the persistence configuration so operators can verify their setup.
+    if IS_RAILWAY:
+        log.info('🚂 Railway environment detected')
+        if FORCE_ENV_CONFIG:
+            log.info(
+                '   FORCE_ENV_CONFIG enabled — API keys will be synced from '
+                'environment variables on every startup (survives DB wipes).'
+            )
+        else:
+            log.warning(
+                '   FORCE_ENV_CONFIG is disabled. If no volume is mounted at %s, '
+                'API keys will be lost on redeploy. Set FORCE_ENV_CONFIG=true or '
+                'attach a Railway Volume.',
+                DATA_DIR,
+            )
+        backup_path = DATA_DIR / 'api_keys_backup.json'
+        if backup_path.exists():
+            log.info('   API key backup file found: %s', backup_path)
+        else:
+            log.info('   No API key backup file yet — will be created on first startup with keys.')
+
     await initialize_runtime_config(app)
     await migrate_legacy_webhook_config()
     await publish_event(app, EVENTS.SYSTEM_STARTUP_STARTED, source='system')

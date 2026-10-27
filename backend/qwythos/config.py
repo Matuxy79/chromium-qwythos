@@ -9,7 +9,7 @@ import socket
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 from urllib.parse import urlparse
 
 import redis
@@ -48,9 +48,162 @@ async def seed_registered_defaults():
     await Config.rename_prefix('rag.web', 'web')
     await Config.repair_flattened_dict_configs()
     await Config.seed_defaults(DEFAULT_CONFIG)
+
+    # Sync API keys from environment variables on every startup (for Railway/deployments)
+    await sync_env_to_config()
+
+    # Restore API keys from backup file if DB was wiped but volume survived
+    await restore_api_keys_from_backup()
+
     from qwythos.utils.openrouter import ensure_openrouter_openai_connection
 
     await ensure_openrouter_openai_connection(hydrate=True)
+
+    # Backup critical API keys after all sync/restore operations
+    await backup_api_keys()
+
+
+# ── Forced environment variable → config sync ────────────────────────────────
+# On ephemeral deployments (Railway without a volume), the database is wiped on
+# every rebuild. FORCE_ENV_CONFIG syncs critical API keys from environment
+# variables into the database on EVERY startup, so they survive redeploys.
+# Auto-enabled on Railway; can be explicitly enabled/disabled elsewhere.
+
+FORCE_ENV_CONFIG = os.getenv('FORCE_ENV_CONFIG', '').lower() == 'true'
+if not os.getenv('FORCE_ENV_CONFIG') and (
+    os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_PROJECT_ID')
+):
+    FORCE_ENV_CONFIG = True
+    log.info('FORCE_ENV_CONFIG auto-enabled (Railway environment detected)')
+
+# Environment variable → config key mapping for forced sync.
+# Only critical API keys are synced — user settings, UI prefs, etc. are NOT.
+ENV_CONFIG_SYNC_MAP = {
+    'OPENROUTER_API_KEY': 'openrouter.api_key',
+    'OPENROUTER_API_BASE_URL': 'openrouter.base_url',
+    'OPENAI_API_KEY': 'openai.api_keys',  # Special handling: array
+    'OPENAI_API_BASE_URL': 'openai.api_base_urls',  # Special handling: array
+    'GEMINI_API_KEY': 'image_generation.gemini.api_key',
+    'AUDIO_TTS_OPENAI_API_KEY': 'audio.tts.openai.api_key',
+    'AUDIO_STT_OPENAI_API_KEY': 'audio.stt.openai.api_key',
+}
+
+# Config keys that should be backed up to a file for disaster recovery
+API_KEY_BACKUP_KEYS = (
+    'openrouter.api_key',
+    'openrouter.base_url',
+    'openai.api_keys',
+    'openai.api_base_urls',
+    'openai.api_configs',
+    'image_generation.gemini.api_key',
+    'audio.tts.openai.api_key',
+    'audio.stt.openai.api_key',
+)
+
+
+async def sync_env_to_config() -> None:
+    """Force-sync critical API keys from environment variables into the database.
+
+    This runs on EVERY startup when FORCE_ENV_CONFIG is enabled. It overrides
+    DB values with env var values, ensuring API keys survive database wipes on
+    ephemeral deployments (Railway without a volume, etc.).
+
+    Only API keys are synced — user preferences, UI settings, and other config
+    are never overridden by environment variables.
+    """
+    if not FORCE_ENV_CONFIG:
+        return
+
+    updates: dict[str, Any] = {}
+
+    for env_var, config_key in ENV_CONFIG_SYNC_MAP.items():
+        env_value = os.getenv(env_var, '').strip()
+        if not env_value:
+            continue
+
+        # Special handling for array-type config keys
+        if config_key in ('openai.api_keys', 'openai.api_base_urls'):
+            # Split on semicolons, matching the existing env var format
+            values = [v.strip() for v in env_value.split(';') if v.strip()]
+            if values:
+                updates[config_key] = values
+        else:
+            updates[config_key] = env_value
+
+    if updates:
+        await Config.upsert(updates)
+        log.info(
+            'FORCE_ENV_CONFIG: synced %d API key(s) from environment: %s',
+            len(updates),
+            ', '.join(sorted(updates.keys())),
+        )
+
+
+async def backup_api_keys() -> None:
+    """Backup critical API keys to a JSON file in the data directory.
+
+    This file survives database corruption and can be used to restore API keys
+    if the database is wiped but the volume is still mounted.
+    """
+    try:
+        values = await Config.get_many(*API_KEY_BACKUP_KEYS)
+        # Only backup if we have at least one non-empty API key
+        if not any(v for v in values.values() if v):
+            return
+
+        backup_path = DATA_DIR / 'api_keys_backup.json'
+        backup_data = {
+            '_meta': {
+                'created_at': datetime.now().isoformat(),
+                'version': '1.0',
+            },
+            'keys': values,
+        }
+        backup_path.write_text(json.dumps(backup_data, indent=2, default=str))
+        backup_path.chmod(0o600)  # Restrictive permissions — contains secrets
+        log.debug('Backed up %d API key(s) to %s', len(values), backup_path)
+    except Exception as e:
+        log.warning('Failed to backup API keys: %s', e)
+
+
+async def restore_api_keys_from_backup() -> None:
+    """Restore API keys from backup file if the database is empty.
+
+    This runs on startup. If the database has no API keys configured but a
+    backup file exists (e.g., database was wiped but volume survived), restore
+    the keys from the backup.
+    """
+    backup_path = DATA_DIR / 'api_keys_backup.json'
+    if not backup_path.exists():
+        return
+
+    try:
+        # Check if DB already has API keys — if so, skip restore
+        current_values = await Config.get_many(*API_KEY_BACKUP_KEYS)
+        has_keys = any(
+            v for v in current_values.values() if v and (not isinstance(v, list) or any(v))
+        )
+        if has_keys:
+            return
+
+        # DB is empty — restore from backup
+        backup_data = json.loads(backup_path.read_text())
+        keys = backup_data.get('keys', {})
+        if not keys:
+            return
+
+        # Filter out empty values
+        restore_updates = {k: v for k, v in keys.items() if v}
+        if restore_updates:
+            await Config.upsert(restore_updates)
+            log.warning(
+                '⚠️  Database was empty — restored %d API key(s) from backup file %s. '
+                'This indicates the database was wiped but the volume survived.',
+                len(restore_updates),
+                backup_path,
+            )
+    except Exception as e:
+        log.warning('Failed to restore API keys from backup: %s', e)
 
 
 async def async_reset_config():
@@ -1664,9 +1817,13 @@ ENABLE_PASSWORD_AUTH = os.getenv('ENABLE_PASSWORD_AUTH', 'True').lower() == 'tru
 
 DEFAULT_LOCALE = os.getenv('DEFAULT_LOCALE', '')
 
-DEFAULT_MODELS = os.getenv('DEFAULT_MODELS', None)
+# Default model for new chats. Set to Venice Uncensored (uncensored instruct-tuned
+# LLM by dphn.ai / Venice.ai, based on Mistral-Small-24B-Instruct-2501).
+# Override with DEFAULT_MODELS env var (comma-separated for multiple models).
+DEFAULT_MODELS = os.getenv('DEFAULT_MODELS', 'venice-uncensored')
 
-DEFAULT_PINNED_MODELS = os.getenv('DEFAULT_PINNED_MODELS', None)
+# Pinned models shown prominently in the model selector.
+DEFAULT_PINNED_MODELS = os.getenv('DEFAULT_PINNED_MODELS', 'venice-uncensored')
 
 try:
     default_prompt_suggestions = json.loads(os.getenv('DEFAULT_PROMPT_SUGGESTIONS', '[]'))
@@ -1720,7 +1877,34 @@ except Exception as e:
     log.exception(f'Error loading DEFAULT_MODEL_METADATA: {e}')
     default_model_metadata = {}
 
-DEFAULT_MODEL_METADATA = default_model_metadata
+# Seed metadata for the default Venice Uncensored model so it displays correctly
+# in the UI even before the admin configures it. Users can override via env var.
+DEFAULT_MODEL_METADATA = {
+    'venice-uncensored': {
+        'name': 'Venice: Uncensored',
+        'description': (
+            'Venice Uncensored Dolphin Mistral 24B Venice Edition — an uncensored '
+            'instruct-tuned LLM by dphn.ai in collaboration with Venice.ai. '
+            'Fine-tuned from Mistral-Small-24B-Instruct-2501 with safety/alignment '
+            'layers removed, emphasizing user control over system prompts and behavior. '
+            '33K context window. $0.20/M input tokens, $0.90/M output tokens.'
+        ),
+        'owned_by': 'venice',
+        'capabilities': {
+            'vision': False,
+            'file_upload': False,
+            'web_search': True,
+            'image_generation': False,
+            'code_interpreter': False,
+            'citations': False,
+            'status_updates': True,
+            'usage': True,
+        },
+        'context_window': 33000,
+        'tags': ['uncensored', 'venice', 'mistral', 'instruct', '24b'],
+    },
+    **default_model_metadata,  # User-provided metadata overrides defaults
+}
 
 try:
     default_model_params = json.loads(os.getenv('DEFAULT_MODEL_PARAMS', '{}'))

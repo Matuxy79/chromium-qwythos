@@ -11,6 +11,44 @@ Newest entries first. Format:
 
 ---
 
+## 2026-10-27 — Default model set to Venice: Uncensored
+- Set `DEFAULT_MODELS` to `'venice-uncensored'` as the default model for new chats in `backend/qwythos/config.py:1820`. The model ID `venice-uncensored` corresponds to Venice Uncensored Dolphin Mistral 24B Venice Edition on OpenRouter — an uncensored instruct-tuned LLM by dphn.ai / Venice.ai, fine-tuned from Mistral-Small-24B-Instruct-2501. 33K context, $0.20/M input, $0.90/M output.
+- Set `DEFAULT_PINNED_MODELS` to `'venice-uncensored'` so the model appears pinned at the top of the model selector.
+- Added seed metadata for `venice-uncensored` in `DEFAULT_MODEL_METADATA` (`config.py:1870-1905`): display name "Venice: Uncensored", full description, capabilities (web_search enabled, vision/file_upload disabled), 33K context window, tags. User-provided `DEFAULT_MODEL_METADATA` env var overrides these defaults via dict merge.
+- Updated `.env.example` with a "Default Model" section documenting `DEFAULT_MODELS` and `DEFAULT_PINNED_MODELS`, including the Venice Uncensored model details and pricing.
+- Frontend automatically picks up the default: `Chat.svelte:197-198` filters default models against available models from OpenRouter. The model becomes available once the OpenRouter API key is configured and models are fetched.
+- Verified by: `python -m py_compile backend/qwythos/config.py` passes; AST check confirms `DEFAULT_MODELS` and `DEFAULT_PINNED_MODELS` are set with correct defaults.
+- Loose ends: did not verify the exact OpenRouter model ID `venice-uncensored` against the live OpenRouter API — this is based on OpenRouter's naming convention for Venice models. If the ID differs (e.g., `cognitivecomputations/dolphin-mistral-24b-venice-edition`), update `DEFAULT_MODELS` accordingly. The model only appears in the selector once OpenRouter returns it in the models list (requires valid API key).
+
+---
+
+## 2026-10-27 — Code-level API persistence across Railway builds
+- Implemented code-level API key persistence so keys survive Railway rebuilds even when the database is wiped (no volume attached).
+- **Volume mount detection** (`backend/start.sh`): bash-level check using `mountpoint` — warns loudly if `/app/backend/data` is not a mounted volume, with Railway-specific guidance (attach Volume in dashboard, or set env vars).
+- **Volume mount detection** (`backend/qwythos/env.py`): Python-level check with `/proc/mounts` fallback. Exports `IS_RAILWAY` flag (detects `RAILWAY_ENVIRONMENT`/`RAILWAY_PROJECT_ID`/`RAILWAY_SERVICE_ID`). Logs warning if Docker/Railway detected without a mounted volume.
+- **Forced env var → DB sync** (`backend/qwythos/config.py`): `FORCE_ENV_CONFIG` flag (auto-enabled on Railway) syncs critical API keys from environment variables into the database on EVERY startup, overriding DB values. Synced keys: `OPENROUTER_API_KEY`, `OPENROUTER_API_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_API_BASE_URL`, `GEMINI_API_KEY`, `AUDIO_TTS_OPENAI_API_KEY`, `AUDIO_STT_OPENAI_API_KEY`. Only API keys are synced — user prefs/UI settings are never overridden.
+- **API key backup/restore** (`backend/qwythos/config.py`): `backup_api_keys()` writes critical keys to `DATA_DIR/api_keys_backup.json` (permissions `0600`) on startup. `restore_api_keys_from_backup()` restores keys if DB is empty but backup file exists (volume survived, DB wiped).
+- **Railway startup logging** (`backend/qwythos/main.py`): logs persistence status on Railway — `FORCE_ENV_CONFIG` state, backup file presence, and actionable warnings.
+- **`.env.example`**: documented `DATA_DIR`, `FORCE_ENV_CONFIG`, and the API key backup mechanism with Railway guidance.
+- **`docs/DATA_PERSISTENCE.md`**: added "Code-Level API Persistence" section covering volume detection, forced env sync (with env var → config key mapping table), backup file format, startup logging, and a Railway deployment checklist.
+- **`backend/.gitignore`**: added `api_keys_backup.json` to ignore list (contains plaintext secrets).
+- Verified by: `python3 -m py_compile` on all modified Python files passes; `git status` shows only intended changes.
+- Loose ends: did not run the app in a live Railway/Docker environment to verify the volume detection and env sync end-to-end. The `mountpoint` command may not be available in all minimal containers — fallback to `/proc/mounts` is implemented. `FORCE_ENV_CONFIG` overrides DB values on every startup when enabled — this is intentional for ephemeral deployments but means admin UI changes to synced keys will be reverted on restart (documented in code comments).
+
+---
+
+## 2026-10-27 — Chat persistence across app builds
+- Cloned `chromium-qwythos` from GitHub and audited the data persistence setup. The runtime data directory (`backend/data/` for source/desktop, `backend/qwythos/data/` for installed package) holds the SQLite database (`webui.db` — all chat history), uploads, cache, and the desktop webview profile. Docker persistence was already correct (named volume in `docker-compose.yaml`, `.dockerignore` excludes `backend/data/*`). Found that `backend/.gitignore` already ignored `/data/*` and `/qwythos/data/*` (plus `*.db` and `.webui_secret_key`), but had no `.gitkeep` exceptions — so directory structure wasn't visible in the repo.
+- Updated `backend/.gitignore` to add `!/data/.gitkeep` and `!/qwythos/data/.gitkeep` exceptions, allowing the placeholder files to be tracked while keeping all runtime data (SQLite DB, uploads, webview profile) ignored.
+- Simplified root `.gitignore` — removed redundant `backend/.webui_secret_key` and `backend/data/desktop-server.log` entries (already covered by `backend/.gitignore`), added a comment pointing to `backend/.gitignore` for chat persistence rules.
+- Created `backend/data/.gitkeep` and `backend/qwythos/data/.gitkeep` with documentation explaining what lives in each directory and how persistence works across Docker, desktop, local dev, and installed-package scenarios.
+- Added `docs/DATA_PERSISTENCE.md` — comprehensive guide covering: where data lives per deployment mode, what's inside the data directory, persistence behavior across frontend rebuilds / Docker restarts / package reinstalls, manual backup/restore commands, Docker volume backup/restore, a "what gets lost" matrix, and a security note.
+- Linked the new doc from `README.md` under the Architecture section (`💾 Data Persistence →`).
+- Verified by: `git add -n backend/data/ backend/qwythos/data/` shows only `.gitkeep` files would be staged; `git check-ignore -v` confirms `webui.db` files match the ignore patterns while `.gitkeep` files match the exceptions.
+- Loose ends: did not run the app to create a live `webui.db` and verify the ignore patterns against real runtime files — the patterns follow standard gitignore semantics and were verified with `git check-ignore`. The `env.py` migration from `backend/data/` to `backend/qwythos/data/` on package install was not exercised.
+
+---
+
 ## 2026-08-24 — Railway `npm ci` lockfile desync (vite-plugin-pwa)
 - Railway Metal builder failed at `RUN npm ci --force` with `EUSAGE`: `package.json` listed `vite-plugin-pwa@^0.21.1` (added in `c8d6553` PWA commit, which only touched `package.json`) but `package-lock.json` had no `vite-plugin-pwa` / workbox / babel-preset-env tree. Secondary mismatch: lockfile `es-object-atoms@1.1.1` vs required `1.1.2`, and lock root still said `0.12.0` after the `0.12.1` bump.
 - Regenerated `package-lock.json` with Node 22.22.1 / npm 10.9.4 via `npm install --package-lock-only`. Resolved `vite-plugin-pwa@0.21.2` and bumped lock root version to `0.12.1`. No `package.json` / Dockerfile changes.

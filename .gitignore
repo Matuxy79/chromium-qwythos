@@ -8,10 +8,11 @@ node_modules
 /work/
 
 # Desktop launcher (local dev convenience, not deployed)
-backend/.webui_secret_key
-backend/data/desktop-server.log
 desktop/setup.log
 frontend-build.log
+
+# Chat persistence — runtime data directories are ignored in backend/.gitignore
+# (SQLite DB with chat history, uploads, cache, webview profile — never commit these)
 
 # Rust-vs-Python spike artifacts
 bench/rs_proxy/target/

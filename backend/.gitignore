@@ -8,5 +8,10 @@ _test
 Pipfile
 !/data
 /data/*
+!/data/.gitkeep
 /qwythos/data/*
+!/qwythos/data/.gitkeep
 .webui_secret_key
+# API key backup file — contains plaintext secrets, never commit
+/data/api_keys_backup.json
+/qwythos/data/api_keys_backup.json

@@ -243,6 +243,67 @@ if FROM_INIT_PY:
 
     DATA_DIR = Path(os.getenv('DATA_DIR', QWYTHOS_DIR / 'data'))
 
+####################################
+# Persistence / volume mount detection
+####################################
+
+# Detect Railway environment
+IS_RAILWAY = bool(
+    os.getenv('RAILWAY_ENVIRONMENT')
+    or os.getenv('RAILWAY_PROJECT_ID')
+    or os.getenv('RAILWAY_SERVICE_ID')
+)
+
+
+def _check_volume_mount(path: Path) -> bool:
+    """Check if a path is a mounted volume (Linux containers only)."""
+    import subprocess
+
+    if sys.platform != 'linux':
+        return True  # Can't check on non-Linux; assume OK
+    try:
+        result = subprocess.run(
+            ['mountpoint', '-q', str(path)],
+            capture_output=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        # mountpoint command not available; try /proc/mounts fallback
+        try:
+            with open('/proc/mounts', 'r') as f:
+                mounts = f.read()
+            resolved = str(path.resolve())
+            for line in mounts.splitlines():
+                parts = line.split()
+                if len(parts) >= 2 and parts[1] == resolved:
+                    return True
+            return False
+        except OSError:
+            return True  # Can't determine; assume OK
+
+
+# Warn if running in a container without a mounted data volume
+if DOCKER or IS_RAILWAY:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    is_mounted = _check_volume_mount(DATA_DIR)
+    if not is_mounted and str(DATA_DIR) == '/app/backend/data':
+        log.warning(
+            '⚠️  DATA_DIR %s is NOT a mounted volume. '
+            'API keys, chat history, and user accounts will be LOST on container restart/rebuild. '
+            'Attach a persistent volume at this path (Railway: Settings → Volumes; '
+            'Docker: -v qwythos-data:/app/backend/data).',
+            DATA_DIR,
+        )
+        if IS_RAILWAY:
+            log.warning(
+                'Railway detected without a mounted volume. '
+                'Set OPENROUTER_API_KEY as a Railway environment variable so it re-seeds on deploy, '
+                'or attach a Volume at /app/backend/data in the Railway dashboard.'
+            )
+    elif is_mounted:
+        log.info('✓ DATA_DIR %s is a mounted volume — data will persist across restarts.', DATA_DIR)
+
 STATIC_DIR = Path(os.getenv('STATIC_DIR', QWYTHOS_DIR / 'static'))
 
 FONTS_DIR = Path(os.getenv('FONTS_DIR', QWYTHOS_DIR / 'static' / 'fonts'))

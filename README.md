@@ -98,7 +98,8 @@ Qwythos is a full-stack platform built on two primary pillars:
 | **Model connections** | Ollama · OpenAI-compatible APIs · Anthropic adapter | Streaming, tools, filters, and middleware orchestration                  |
 
 📖 **[Full Architecture Documentation →](./docs/ARCHITECTURE.md)** ·
-🧭 **[Codebase Map →](./docs/CODEBASE_MAP.md)**
+🧭 **[Codebase Map →](./docs/CODEBASE_MAP.md)** ·
+💾 **[Data Persistence →](./docs/DATA_PERSISTENCE.md)**
 
 ## Runtime Surfaces 🌐
 
