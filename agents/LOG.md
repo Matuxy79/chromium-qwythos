@@ -9,6 +9,17 @@ Newest entries first. Format:
 - Loose ends: <anything left uncertain or broken>
 ```
 
+## 2026-10-27 — Tool Auto Mode & Venice: Uncensored non-native tool fallback
+- Fixed OpenRouter 400 error (`No endpoints found that support tool use. Try disabling "get_current_timestamp"`) on Venice: Uncensored and other models that do not support OpenAI native function calling.
+- Added `model_supports_native_tools(model)` in `backend/qwythos/utils/tools.py:523` to detect models that lack native function-calling capability based on OpenRouter `supported_parameters`, explicit capabilities (`builtin_tools: false`, `tools: false`), and known non-tool provider families (Venice/Dolphin).
+- Gated `use_builtin_tools` and `form_data['tools']` in `backend/qwythos/utils/middleware.py`: models without native tool support will never have `tools: [...]` sent to OpenRouter/provider endpoints, preventing 400 routing rejections.
+- Implemented **Tool Auto Mode (Pre-Search RAG Fallback)** in `backend/qwythos/utils/middleware.py`: when Web Search is toggled on for a non-tool model like Venice: Uncensored, the backend automatically performs the web search upfront, emits real-time status and citation events to the UI, formats the search results into the prompt context via the RAG template, and dispatches the request clean without the `tools` parameter.
+- Updated `DEFAULT_MODEL_METADATA` seed in `backend/qwythos/config.py:1882` to explicitly set `builtin_tools: False` and `citations: True` for `venice-uncensored`.
+- Updated `backend/qwythos/utils/models.py:348` to properly apply per-model entries (e.g., `venice-uncensored`) from `DEFAULT_MODEL_METADATA` alongside global defaults.
+- Added unit tests in `test/test_tool_auto_mode.py`.
+- Verified by: `python -m py_compile` on all modified backend files; `python test/test_tool_auto_mode.py` (6 tests pass); `python test/test_openrouter_credentials.py` (13 tests pass).
+- Loose ends: none.
+
 ---
 
 ## 2026-10-27 — Default model set to Venice: Uncensored

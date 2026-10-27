@@ -520,6 +520,42 @@ def get_attached_knowledge(model: dict, metadata: dict) -> list[dict]:
     return knowledge
 
 
+def model_supports_native_tools(model: dict | None) -> bool:
+    """Check whether a model supports OpenAI-compatible native function calling / tools.
+
+    Returns False if:
+    1. The model's meta capabilities explicitly disable builtin_tools or tools.
+    2. OpenRouter or the provider metadata specifies supported_parameters and 'tools' is absent.
+    3. The model belongs to a known provider/family that does not support native tools (e.g., Venice uncensored).
+    """
+    if not isinstance(model, dict):
+        return True
+
+    info = model.get('info') or {}
+    meta = info.get('meta') or model.get('meta') or {}
+    capabilities = meta.get('capabilities') or {}
+
+    # 1. Explicit capability check
+    if capabilities.get('builtin_tools') is False or capabilities.get('tools') is False:
+        return False
+
+    # 2. Provider supported_parameters check (e.g. OpenRouter)
+    supported_params = model.get('supported_parameters')
+    if supported_params is None and isinstance(info, dict):
+        supported_params = info.get('supported_parameters')
+    if isinstance(supported_params, list):
+        if 'tools' not in supported_params:
+            return False
+
+    # 3. Known non-tool models / providers
+    model_id = str(model.get('id', '')).lower()
+    owned_by = str(model.get('owned_by', '')).lower()
+    if owned_by == 'venice' or 'venice' in model_id:
+        return False
+
+    return True
+
+
 async def get_builtin_tools(
     request: Request, extra_params: dict, features: dict = None, model: dict = None
 ) -> dict[str, dict]:
@@ -531,6 +567,9 @@ async def get_builtin_tools(
     builtin_functions = []
     features = features or {}
     model = model or {}
+
+    if not model_supports_native_tools(model):
+        return tools_dict
 
     # Helper to get model capabilities (defaults to True if not specified)
     def get_model_capability(name: str, default: bool = True) -> bool:

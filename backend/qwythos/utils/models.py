@@ -344,22 +344,44 @@ async def get_all_models(request, refresh: bool = False, user: UserModel = None)
         except Exception as e:
             log.debug(f'Failed to load function module for {function_id}: {e}')
 
-    # Apply global model defaults to all models
-    # Per-model overrides take precedence over global defaults
+    # Apply model defaults: per-model entries (e.g. 'venice-uncensored') win,
+    # then top-level global defaults are applied.
     default_metadata = config.get('models.default_metadata') or {}
 
     if default_metadata:
         for model in models:
-            info = model.get('info')
+            model_id = str(model.get('id', ''))
+            model_name = str(model.get('name', ''))
 
-            if info is None:
-                model['info'] = {'meta': copy.deepcopy(default_metadata)}
-                continue
+            # Check if default_metadata has an entry specifically for this model
+            model_override = default_metadata.get(model_id)
+            if not model_override:
+                for k, v in default_metadata.items():
+                    if isinstance(v, dict) and any(c in v for c in ('capabilities', 'context_window', 'tags', 'owned_by')):
+                        if k.lower() in model_id.lower() or model_id.lower().endswith(k.lower()) or k.lower() == model_name.lower():
+                            model_override = v
+                            break
 
+            info = model.setdefault('info', {})
             meta = info.setdefault('meta', {})
+
+            if model_override and isinstance(model_override, dict):
+                for key, value in model_override.items():
+                    if key == 'capabilities' and isinstance(value, dict):
+                        existing = meta.get('capabilities') or {}
+                        meta['capabilities'] = {**value, **existing}
+                    elif key == 'name' and value:
+                        model['name'] = value
+                    elif key == 'owned_by' and value and not model.get('owned_by'):
+                        model['owned_by'] = value
+                    elif meta.get(key) is None:
+                        meta[key] = copy.deepcopy(value)
+
+            # Apply global defaults (keys that are not per-model dicts)
             for key, value in default_metadata.items():
+                if isinstance(value, dict) and any(c in value for c in ('capabilities', 'context_window', 'tags', 'owned_by')):
+                    continue
                 if key == 'capabilities':
-                    # Merge capabilities: defaults as base, per-model overrides win
                     existing = meta.get('capabilities') or {}
                     meta['capabilities'] = {**value, **existing}
                 elif meta.get(key) is None:

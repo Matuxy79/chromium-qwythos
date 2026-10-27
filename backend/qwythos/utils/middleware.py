@@ -136,6 +136,7 @@ from qwythos.utils.tools import (
     get_terminal_tools,
     get_tools,
     get_updated_tool_function,
+    model_supports_native_tools,
 )
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
@@ -2642,12 +2643,15 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             if note_files:
                 files = [*(files or []), *note_files]
 
-    use_builtin_tools = (
-        chat and (chat.meta or {}).get('internal') is True and (chat.meta or {}).get('type') == 'note'
-    ) or (
-        bool(metadata.get('session_id'))
-        and metadata.get('params', {}).get('function_calling') != 'legacy'
-        and (model.get('info', {}).get('meta', {}).get('capabilities') or {}).get('builtin_tools', True)
+    supports_native_tools = model_supports_native_tools(model)
+
+    use_builtin_tools = supports_native_tools and (
+        (chat and (chat.meta or {}).get('internal') is True and (chat.meta or {}).get('type') == 'note')
+        or (
+            bool(metadata.get('session_id'))
+            and metadata.get('params', {}).get('function_calling') != 'legacy'
+            and (model.get('info', {}).get('meta', {}).get('capabilities') or {}).get('builtin_tools', True)
+        )
     )
 
     if skill_ids:
@@ -2906,15 +2910,16 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             # (e.g. pipe functions) can access all tools including MCP and builtins.
             metadata['tools'] = tools_dict
 
-            if metadata.get('params', {}).get('function_calling') != 'legacy':
-                # If the function calling is native, then call the tools function calling handler
+            if metadata.get('params', {}).get('function_calling') != 'legacy' and supports_native_tools:
+                # If the function calling is native and supported, then call the tools function calling handler
                 form_data['tools'] = [
                     {'type': 'function', 'function': tool.get('spec', {})} for tool in tools_dict.values()
                 ]
                 if inlet_filter_tools:
                     form_data['tools'].extend(inlet_filter_tools)
             else:
-                # If the function calling is not native, then call the tools function calling handler
+                # If the function calling is not native, or model does not support native tools,
+                # fall back to the prompt-based tools function calling handler
                 try:
                     form_data, flags = await chat_completion_tools_handler(
                         request, form_data, extra_params, user, models, tools_dict
@@ -2932,6 +2937,111 @@ async def process_chat_payload(request, form_data, user, metadata, model):
             sources.extend(flags.get('sources', []))
         except Exception as e:
             log.exception(e)
+
+    # Tool Auto Mode: For models that do not support native function calling,
+    # execute web search upfront if requested and inject the findings into sources.
+    if not supports_native_tools and features.get('web_search'):
+        auto_web_search_enabled = (
+            await Config.get('web.search.enable')
+            and (model.get('info', {}).get('meta', {}).get('capabilities') or {}).get('web_search', True)
+        )
+        if auto_web_search_enabled:
+            has_perm = user.role == 'admin' or await has_permission(
+                user.id, 'features.web_search', await Config.get('user.permissions')
+            )
+            if has_perm and prompt and prompt.strip():
+                try:
+                    if event_emitter:
+                        await event_emitter(
+                            {
+                                'type': 'status',
+                                'data': {
+                                    'action': 'web_search',
+                                    'description': f'Searching the web for "{prompt}"',
+                                    'query': prompt,
+                                    'done': False,
+                                },
+                            }
+                        )
+
+                    from qwythos.tools.builtin import search_web
+
+                    search_results_raw = await search_web(
+                        query=prompt,
+                        __request__=request,
+                        __user__=user.model_dump() if isinstance(user, UserModel) else {},
+                    )
+                    search_items = []
+                    if search_results_raw:
+                        try:
+                            search_items = json.loads(search_results_raw)
+                        except Exception:
+                            search_items = []
+
+                    if isinstance(search_items, list) and search_items:
+                        web_sources = []
+                        for item in search_items:
+                            if isinstance(item, dict) and (item.get('link') or item.get('snippet')):
+                                web_sources.append(
+                                    {
+                                        'source': {
+                                            'name': item.get('title') or item.get('link'),
+                                            'id': item.get('link') or item.get('title'),
+                                        },
+                                        'document': [item.get('snippet', '')],
+                                        'metadata': [
+                                            {
+                                                'source': item.get('link', ''),
+                                                'title': item.get('title', ''),
+                                            }
+                                        ],
+                                    }
+                                )
+
+                        if web_sources:
+                            sources.extend(web_sources)
+                            if event_emitter:
+                                await event_emitter(
+                                    {
+                                        'type': 'status',
+                                        'data': {
+                                            'action': 'web_search',
+                                            'description': f'Found {len(web_sources)} web results for "{prompt}"',
+                                            'query': prompt,
+                                            'urls': [item.get('link') for item in search_items if item.get('link')],
+                                            'done': True,
+                                        },
+                                    }
+                                )
+                                for ws in web_sources:
+                                    await event_emitter({'type': 'source', 'data': ws})
+                    elif event_emitter:
+                        await event_emitter(
+                            {
+                                'type': 'status',
+                                'data': {
+                                    'action': 'web_search',
+                                    'description': 'No web search results found',
+                                    'query': prompt,
+                                    'done': True,
+                                },
+                            }
+                        )
+                except Exception as e:
+                    log.exception(f'Auto web search failed: {e}')
+                    if event_emitter:
+                        await event_emitter(
+                            {
+                                'type': 'status',
+                                'data': {
+                                    'action': 'web_search',
+                                    'description': f'Web search error: {e}',
+                                    'query': prompt,
+                                    'done': True,
+                                    'error': True,
+                                },
+                            }
+                        )
 
     # Save the pre-RAG message state so the native tool call loop can
     # restore to the true original (before file-source injection) rather
