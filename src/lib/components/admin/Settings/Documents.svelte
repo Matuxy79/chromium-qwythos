@@ -19,6 +19,7 @@
 
 	import { reindexKnowledgeFiles } from '$lib/apis/knowledge';
 	import { deleteAllFiles } from '$lib/apis/files';
+	import { getOpenRouterEmbeddingModels, type OpenRouterCatalogModel } from '$lib/apis/openai';
 
 	import ResetUploadDirConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 	import ResetVectorDBConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
@@ -54,6 +55,34 @@
 	let OpenAIUrl = '';
 	let OpenAIKey = '';
 	let inheritsOpenRouter = false;
+
+	let openRouterEmbeddingModels: OpenRouterCatalogModel[] = [];
+	let openRouterEmbeddingsLoading = false;
+
+	$: openRouterEmbeddingTarget =
+		RAG_EMBEDDING_ENGINE === 'openai' &&
+		((inheritsOpenRouter && !OpenAIKey) || (OpenAIUrl || '').includes('openrouter.ai'));
+
+	const embeddingPriceLabel = (model: OpenRouterCatalogModel) => {
+		const num = Number(model.pricing?.prompt);
+		if (!isFinite(num) || num < 0) return '';
+		if (num === 0) return ' · free';
+		const perM = num * 1_000_000;
+		return ` · $${perM < 1 ? perM.toFixed(3) : perM.toFixed(2)}/M`;
+	};
+
+	const loadOpenRouterEmbeddingModels = async () => {
+		openRouterEmbeddingsLoading = true;
+		try {
+			const res = await getOpenRouterEmbeddingModels(localStorage.token);
+			openRouterEmbeddingModels = res?.data ?? [];
+		} catch (err) {
+			console.error(err);
+			openRouterEmbeddingModels = [];
+		} finally {
+			openRouterEmbeddingsLoading = false;
+		}
+	};
 
 	let AzureOpenAIUrl = '';
 	let AzureOpenAIKey = '';
@@ -303,6 +332,13 @@
 			OpenAIKey = embeddingConfig.openai_config.key;
 			OpenAIUrl = embeddingConfig.openai_config.url;
 			inheritsOpenRouter = embeddingConfig.inherits_openrouter ?? false;
+
+			if (
+				RAG_EMBEDDING_ENGINE === 'openai' &&
+				((inheritsOpenRouter && !OpenAIKey) || (OpenAIUrl || '').includes('openrouter.ai'))
+			) {
+				await loadOpenRouterEmbeddingModels();
+			}
 
 			OllamaKey = embeddingConfig.ollama_config.key;
 			OllamaUrl = embeddingConfig.ollama_config.url;
@@ -966,7 +1002,11 @@
 								if (e.target.value === 'ollama') {
 									RAG_EMBEDDING_MODEL = '';
 								} else if (e.target.value === 'openai') {
-									RAG_EMBEDDING_MODEL = 'text-embedding-3-small';
+									RAG_EMBEDDING_MODEL =
+										inheritsOpenRouter && !OpenAIKey
+											? 'openai/text-embedding-3-small'
+											: 'text-embedding-3-small';
+									loadOpenRouterEmbeddingModels();
 								} else if (e.target.value === 'azure_openai') {
 									RAG_EMBEDDING_MODEL = 'text-embedding-3-small';
 								} else if (e.target.value === '') {
@@ -1083,6 +1123,37 @@
 							'Model used to generate embeddings. Reindex knowledge after changing this.'
 						)}
 					>
+						{#if openRouterEmbeddingTarget}
+							<div class="mb-2 w-full">
+								<SettingsSelect
+									className="w-full"
+									value={openRouterEmbeddingModels.some((m) => m.id === RAG_EMBEDDING_MODEL)
+										? RAG_EMBEDDING_MODEL
+										: '__custom__'}
+									ariaLabel={$i18n.t('Select an OpenRouter embedding model')}
+									on:change={(e) => {
+										if (e.target.value !== '__custom__') {
+											RAG_EMBEDDING_MODEL = e.target.value;
+										}
+									}}
+								>
+									{#if openRouterEmbeddingsLoading}
+										<option value="__loading__" disabled>{$i18n.t('Loading models...')}</option>
+									{:else}
+										{#if !openRouterEmbeddingModels.some((m) => m.id === RAG_EMBEDDING_MODEL)}
+											<option value="__custom__">
+												{$i18n.t('Custom ({{model}})', { model: RAG_EMBEDDING_MODEL || '—' })}
+											</option>
+										{/if}
+										{#each openRouterEmbeddingModels as embeddingModel (embeddingModel.id)}
+											<option value={embeddingModel.id}>
+												{embeddingModel.name} ({embeddingModel.id}){embeddingPriceLabel(embeddingModel)}
+											</option>
+										{/each}
+									{/if}
+								</SettingsSelect>
+							</div>
+						{/if}
 						<div class="flex w-full gap-2">
 							<input
 								class={inputClass}

@@ -1106,9 +1106,10 @@ def get_embedding_function(
             # Deferred so a missing local model degrades RAG instead of crashing boot.
             if embedding_function is None:
                 raise ValueError(
-                    'No embedding model is loaded. Set RAG_EMBEDDING_MODEL to a valid '
-                    'SentenceTransformer model name, or configure an external '
-                    'RAG_EMBEDDING_ENGINE (ollama, openai, azure_openai).'
+                    'No embedding model is loaded. Local (in-process) embedding models are '
+                    'disabled in this build, so setting RAG_EMBEDDING_MODEL alone has no effect. '
+                    'Set RAG_EMBEDDING_ENGINE to an external engine (ollama, openai, azure_openai) '
+                    'and RAG_EMBEDDING_MODEL to a model that engine serves.'
                 )
             return await asyncio.to_thread(
                 (

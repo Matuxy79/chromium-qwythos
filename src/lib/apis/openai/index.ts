@@ -183,6 +183,41 @@ export const getOpenRouterCatalog = async (token: string = '', q: string = '') =
 	return res as { data: OpenRouterCatalogModel[]; count: number } | null;
 };
 
+export const getOpenRouterEmbeddingModels = async (token: string = '', q: string = '') => {
+	let error = null;
+
+	const res = await fetch(
+		`${OPENAI_API_BASE_URL}/openrouter/embedding-models${q ? `?q=${encodeURIComponent(q)}` : ''}`,
+		{
+			method: 'GET',
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+				...(token && { authorization: `Bearer ${token}` })
+			}
+		}
+	)
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.error(err);
+			if (err && 'detail' in err) {
+				error = err.detail;
+			} else {
+				error = 'Server connection failed';
+			}
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res as { data: OpenRouterCatalogModel[]; count: number } | null;
+};
+
 export const verifyOpenAIConnection = async (
 	token: string = '',
 	connection: dict = {},

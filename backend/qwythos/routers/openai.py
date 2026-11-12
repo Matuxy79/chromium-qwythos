@@ -862,6 +862,59 @@ async def get_openrouter_model_catalog(request: Request, q: str = '', user=Depen
     return {'data': catalog, 'count': len(catalog)}
 
 
+@router.get('/openrouter/embedding-models')
+async def get_openrouter_embedding_models(request: Request, q: str = '', user=Depends(get_verified_user)):
+    """List embedding-capable models from OpenRouter's embeddings catalog.
+
+    Proxies the public ``{base}/embeddings/models`` endpoint so the admin UI can
+    offer a picker for ``rag.embedding_model`` when the engine is 'openai' and
+    credentials inherit OpenRouter. `q` filters over id / name / description.
+    """
+    base_url, api_key = await get_resolved_openai_compatible()
+    if not is_openrouter_url(base_url):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='OpenRouter is not configured. Set OPENROUTER_API_KEY or add an openrouter.ai connection.',
+        )
+
+    # The embeddings catalog is public; send the key when we have one.
+    response_data = await send_get_request(request, f'{base_url}/embeddings/models', api_key or None, user=user)
+    if not response_data or not isinstance(response_data.get('data'), list):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail='Failed to fetch the OpenRouter embeddings catalog.',
+        )
+
+    def _normalize(text: str) -> str:
+        return ' '.join(re.sub(r'[^a-z0-9]+', ' ', text.lower()).split())
+
+    query = _normalize(q or '')
+    models = []
+    for model in response_data.get('data', []):
+        if not isinstance(model, dict) or not model.get('id'):
+            continue
+        if query:
+            haystack = _normalize(
+                ' '.join(str(model.get(key) or '') for key in ('id', 'name', 'description'))
+            )
+            if query not in haystack:
+                continue
+        model_id = str(model.get('id'))
+        models.append(
+            {
+                'id': model_id,
+                'name': model.get('name') or model_id,
+                'description': str(model.get('description') or '')[:300],
+                'context_length': model.get('context_length'),
+                'pricing': model.get('pricing') or {},
+                'owned_by': model_id.split('/')[0] if '/' in model_id else 'openrouter',
+            }
+        )
+
+    models.sort(key=lambda item: item['id'])
+    return {'data': models, 'count': len(models)}
+
+
 class ConnectionVerificationForm(BaseModel):
     url: str
     key: str
