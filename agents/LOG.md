@@ -9,6 +9,30 @@ Newest entries first. Format:
 - Loose ends: <anything left uncertain or broken>
 ```
 
+## 2026-11-12 — In-app OpenRouter model browser replaces external qwythos.com/models link
+- `qwythos.com` is a parked Spaceship domain (not the app), so the Workspace → Models "Made by Qwythos Community" link (`https://qwythos.com/models`) died with ERR_EMPTY_RESPONSE. Reworked that section into an in-app, searchable OpenRouter catalog view.
+- Backend: new `GET /openai/openrouter/models?q=...` in `backend/qwythos/routers/openai.py` (`get_openrouter_model_catalog`). Resolves credentials via `get_resolved_openai_compatible()`, proxies `{base}/models`, filters `q` over id/name/description, returns slim sorted entries (id, name, truncated description, context_length, pricing, supported_parameters, top_provider, owned_by). 400 when OpenRouter isn't configured / no key, 502 when upstream fails.
+- Frontend: `getOpenRouterCatalog(token, q)` in `src/lib/apis/openai/index.ts`; new `src/lib/components/workspace/Models/OpenRouterDiscover.svelte` — search box synced to the `?q=` URL param (so `/workspace/models?q=venice` is shareable), debounced fetch, result count, per-model context + $/M pricing, click a row to open `/?model=<id>`. Wired into `src/lib/components/workspace/Models.svelte` in place of the old `CommunityDiscover` external link (import swapped; Prompts/Tools/Functions still link out to qwythos.com).
+- Also repointed the two `qwythos.com/models?q=<model>` entry points that the model-selector "Community Reviews" menu and the rate-comment "Leave a public review" link used: `ModelItemMenu.svelte` now does `goto('/workspace/models?q=<id>')` instead of `window.open('https://qwythos.com/...')`, and `RateComment.svelte` links in-app to the same path. The `q` filter in the endpoint is separator-insensitive (`re.sub(r'[^a-z0-9]+', ' ', ...)`) so `venice-uncensored` matches the catalog name "Venice Uncensored".
+- Verified by: `py_compile` on routers/openai.py; AST-extraction test of the endpoint (route registration, q filtering incl. separator-insensitive match, slimming/sorting, 400/400/502 paths — all pass, scratchpad script); `test_tool_auto_mode.py` (7) and `test_openrouter_credentials.py` (13) pass; `npx vite build` succeeds twice (component compiles and bundles); svelte-check shows no new error classes in touched files (repo has 8297 pre-existing errors).
+- Loose ends: not yet deployed — Railway needs a rebuild from this tree for `/openai/openrouter/models` to exist in production. Prompts/Tools/Functions community links and `/m/<user>/<model>` share links still point at the parked domain.
+
+---
+
+## 2026-11-12 — Web Search default-enabled for Venice: Uncensored
+- Added `'defaultFeatureIds': ['web_search']` to `DEFAULT_MODEL_METADATA['venice-uncensored']` in `backend/qwythos/config.py:1904`.
+- This ensures Venice: Uncensored loads with Web Search active by default on new chats without requiring users to manually toggle the switch in the UI.
+- Added test in `test/test_tool_auto_mode.py` asserting `DEFAULT_MODEL_METADATA['venice-uncensored']` contains `defaultFeatureIds: ['web_search']`.
+- Verified by: `python -m py_compile backend/qwythos/config.py` passes; `python test/test_tool_auto_mode.py` (7 tests pass); `python test/test_openrouter_credentials.py` (13 tests pass).
+- Loose ends: none.
+
+---
+
+## 2026-11-12 — Venice live-search diagnosis
+- Inspected the Railway app and Avatar chat. The current chat's Integrations → Enable Web Search switch was unchecked and the reply showed no web sources. `Chat.svelte` sends the switch as `features.web_search`; Venice's automatic search path in `middleware.py` only runs when that flag is true. The current UI does not prove the historical flag for the already-sent message.
+- Verified by: production `/health` and `/api/version` returned HTTP 200; authenticated switch reported `aria-checked=false`; source inspection of the frontend request and Venice fallback.
+- No code behavior changed; no live search request was sent from the chat.
+
 ## 2026-10-27 — Tool Auto Mode & Venice: Uncensored non-native tool fallback
 - Fixed OpenRouter 400 error (`No endpoints found that support tool use. Try disabling "get_current_timestamp"`) on Venice: Uncensored and other models that do not support OpenAI native function calling.
 - Added `model_supports_native_tools(model)` in `backend/qwythos/utils/tools.py:523` to detect models that lack native function-calling capability based on OpenRouter `supported_parameters`, explicit capabilities (`builtin_tools: false`, `tools: false`), and known non-tool provider families (Venice/Dolphin).

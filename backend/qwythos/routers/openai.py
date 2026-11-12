@@ -52,6 +52,8 @@ from qwythos.utils.misc import (
 from qwythos.utils.openrouter import (
     OPENROUTER_DEFAULT_BASE_URL,
     ensure_openrouter_openai_connection,
+    get_resolved_openai_compatible,
+    is_openrouter_url,
     openai_compatible_connection_index,
     openrouter_attribution_headers,
 )
@@ -798,6 +800,66 @@ async def get_models(request: Request, url_idx: int | None = None, user=Depends(
         models['data'] = await get_filtered_models(models, user)
 
     return models
+
+
+@router.get('/openrouter/models')
+async def get_openrouter_model_catalog(request: Request, q: str = '', user=Depends(get_verified_user)):
+    """Proxy the OpenRouter model catalog using the resolved OpenRouter credentials.
+
+    `q` optionally filters by substring over id / name / description. Returns a slim
+    per-model summary (pricing, context length, supported parameters) for the
+    in-app "discover models" browser.
+    """
+    base_url, api_key = await get_resolved_openai_compatible()
+    if not is_openrouter_url(base_url):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='OpenRouter is not configured. Set OPENROUTER_API_KEY or add an openrouter.ai connection.',
+        )
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='No OpenRouter API key configured.',
+        )
+
+    response_data = await send_get_request(request, f'{base_url}/models', api_key, user=user)
+    if not response_data or not isinstance(response_data.get('data'), list):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail='Failed to fetch the OpenRouter model catalog.',
+        )
+
+    def _normalize(text: str) -> str:
+        # Separator-insensitive so 'venice-uncensored' matches 'Venice Uncensored'.
+        return ' '.join(re.sub(r'[^a-z0-9]+', ' ', text.lower()).split())
+
+    query = _normalize(q or '')
+    catalog = []
+    for model in response_data.get('data', []):
+        if not isinstance(model, dict) or not model.get('id'):
+            continue
+        if query:
+            haystack = _normalize(
+                ' '.join(str(model.get(key) or '') for key in ('id', 'name', 'description'))
+            )
+            if query not in haystack:
+                continue
+        model_id = str(model.get('id'))
+        catalog.append(
+            {
+                'id': model_id,
+                'name': model.get('name') or model_id,
+                'description': str(model.get('description') or '')[:300],
+                'context_length': model.get('context_length'),
+                'pricing': model.get('pricing') or {},
+                'supported_parameters': model.get('supported_parameters') or [],
+                'top_provider': model.get('top_provider') or {},
+                'owned_by': model_id.split('/')[0] if '/' in model_id else 'openrouter',
+            }
+        )
+
+    catalog.sort(key=lambda item: item['id'])
+    return {'data': catalog, 'count': len(catalog)}
 
 
 class ConnectionVerificationForm(BaseModel):

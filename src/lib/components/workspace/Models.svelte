@@ -58,7 +58,7 @@
 	import DropdownMenu from '$lib/components/common/DropdownMenu.svelte';
 	import ViewSelector from './common/ViewSelector.svelte';
 	import TagSelector from './common/TagSelector.svelte';
-	import CommunityDiscover from './common/CommunityDiscover.svelte';
+	import OpenRouterDiscover from './Models/OpenRouterDiscover.svelte';
 	import Pagination from '../common/Pagination.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
 
@@ -912,13 +912,7 @@
 		{/if}
 	</div>
 
-	{#if $config?.features.enable_community_sharing}
-		<CommunityDiscover
-			href="https://qwythos.com/models"
-			title={$i18n.t('Discover a model')}
-			description={$i18n.t('Discover, download, and explore model presets')}
-		/>
-	{/if}
+	<OpenRouterDiscover />
 {:else}
 	<div class="w-full h-full flex justify-center items-center">
 		<Spinner className="size-5" />

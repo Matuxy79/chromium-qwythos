@@ -256,8 +256,7 @@
 	{#if $config?.features.enable_community_sharing && message?.model}
 		<div class="mt-3 pt-3 border-t border-gray-100/30 dark:border-gray-850/30">
 			<a
-				href={`https://qwythos.com/models?q=${encodeURIComponent(message.model)}`}
-				target="_blank"
+				href={`/workspace/models?q=${encodeURIComponent(message.model)}`}
 				class="flex cursor-pointer items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-850 w-full px-3 py-2 rounded-xl transition"
 			>
 				<div class="self-center">

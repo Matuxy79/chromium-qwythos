@@ -1901,6 +1901,7 @@ DEFAULT_MODEL_METADATA = {
             'usage': True,
             'builtin_tools': False,
         },
+        'defaultFeatureIds': ['web_search'],
         'context_window': 33000,
         'tags': ['uncensored', 'venice', 'mistral', 'instruct', '24b'],
     },

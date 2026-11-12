@@ -69,6 +69,33 @@ class TestToolAutoMode(unittest.TestCase):
         }
         self.assertTrue(model_supports_native_tools(model))
 
+    def test_venice_default_features_in_config(self):
+        config_file = Path(__file__).resolve().parents[1] / 'backend' / 'qwythos' / 'config.py'
+        with open(config_file, 'r', encoding='utf-8') as f:
+            cfg_code = f.read()
+        cfg_tree = ast.parse(cfg_code)
+        # Find DEFAULT_MODEL_METADATA assignment
+        for node in cfg_tree.body:
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == 'DEFAULT_MODEL_METADATA':
+                        dict_node = node.value
+                        if isinstance(dict_node, ast.Dict):
+                            for k, v in zip(dict_node.keys, dict_node.values):
+                                if isinstance(k, ast.Constant) and k.value == 'venice-uncensored' and isinstance(v, ast.Dict):
+                                    found_keys = {}
+                                    for sub_k, sub_v in zip(v.keys, v.values):
+                                        if isinstance(sub_k, ast.Constant):
+                                            if isinstance(sub_v, ast.List):
+                                                found_keys[sub_k.value] = [el.value for el in sub_v.elts if isinstance(el, ast.Constant)]
+                                            elif isinstance(sub_v, ast.Constant):
+                                                found_keys[sub_k.value] = sub_v.value
+                                    self.assertIn('defaultFeatureIds', found_keys)
+                                    self.assertIn('web_search', found_keys['defaultFeatureIds'])
+                                    return
+        self.fail("DEFAULT_MODEL_METADATA['venice-uncensored'] was not found or missing defaultFeatureIds")
+
+
 
 if __name__ == '__main__':
     unittest.main()

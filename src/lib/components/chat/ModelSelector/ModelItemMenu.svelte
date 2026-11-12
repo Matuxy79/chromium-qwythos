@@ -153,10 +153,7 @@
 						e.stopPropagation();
 						e.preventDefault();
 
-						window.open(
-							`https://qwythos.com/models?q=${encodeURIComponent(model?.id ?? '')}`,
-							'_blank'
-						);
+						goto(`/workspace/models?q=${encodeURIComponent(model?.id ?? '')}`);
 						show = false;
 					}}
 				>
