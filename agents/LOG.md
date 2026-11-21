@@ -1,5 +1,10 @@
 # Agent activity log
 
+## 2026-11-21 — Railway frontend install investigation
+- The iPhone status-bar fix is already present in commit `6da01ee`, but the pictured Railway build failed before deployment. Its `npm ci` failure log is clipped; the onnxruntime-node Linux installer independently reproduces the visible HTTP stack when fetching its CUDA archive, which returned 404.
+- Scoped `ONNXRUNTIME_NODE_INSTALL_CUDA=skip` to the frontend Docker build's `npm ci`; the browser build does not need Node's CUDA provider. The same installer exits successfully with this setting.
+- Verified by: checking the installer and archive response, and `git diff --check`. Docker daemon and Railway authentication were unavailable, so a full container build and deployment remain unverified. Confirm the complete Railway error and test the resulting build on the iPhone.
+
 ## 2026-11-21 — Web Search + Code Interpreter switched on by default (code level)
 
 - Added `DEFAULT_ENABLED_CHAT_FEATURES` to `src/lib/constants.ts`: Web Search and
@@ -289,3 +294,20 @@ Newest entries first. Format:
   - Two ~1 MB+ PDFs at repo root (`Qwythos-gguf*.pdf`) — undocumented purpose.
   - Whether `rust-backend` should be completed, fixed to compile, or deleted
     is an open decision for matuxy.
+
+## 2026-11-21 — iOS top clearance for mobile headers (Claude)
+
+- Symptom: on iPhone the sidebar toggle, the chat's top-right buttons (temporary
+  chat) and the drawer's close button sat under the status bar clock and could
+  not be tapped.
+- Cause: top padding came from `env(safe-area-inset-top, <fallback>)`. iOS always
+  defines `env()` and reports 0 when it sees no top inset, so the fallback never
+  applied. Commit 6784763 had replaced the fixed `pt-1.5` (6px) with this.
+- Change: `src/app.css` adds `.ios-safe-top` and sets the drawer's
+  `.mobile-sidebar-content` top padding to `max(env(safe-area-inset-top, 0px), 3.75rem)`,
+  inside `@supports (-webkit-touch-callout: none)` within the mobile media query.
+  The class is applied to the chat and channel navbars, the admin, calendar,
+  home, playground and workspace navs, the automations header row, the notes list
+  row and the note editor header.
+- Not verified on a physical iPhone. Chromium does not run the iOS-only branch.
+  The 3.75rem floor is a guess sized to clear the Dynamic Island status bar.

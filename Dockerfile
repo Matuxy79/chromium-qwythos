@@ -29,7 +29,9 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 COPY package.json package-lock.json ./
-RUN npm ci --force
+# The browser build does not need the Node ONNX CUDA provider. Its installer
+# otherwise fetches a GPU archive from GitHub, which can fail the whole build.
+RUN ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci --force
 
 COPY . .
 ENV APP_BUILD_HASH=${BUILD_HASH}

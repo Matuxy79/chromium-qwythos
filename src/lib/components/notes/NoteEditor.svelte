@@ -1003,7 +1003,7 @@ ${content}
 				</div>
 			{:else}
 				<div class=" w-full flex flex-col {loading ? 'opacity-20' : ''}">
-					<div class="shrink-0 w-full flex justify-between items-center px-3">
+					<div class="ios-safe-top shrink-0 w-full flex justify-between items-center px-3">
 						<div class="w-full min-w-0 flex items-center">
 							{#if $mobile}
 								<MobileSidebarToggle />
