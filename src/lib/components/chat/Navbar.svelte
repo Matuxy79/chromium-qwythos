@@ -7,6 +7,7 @@
 		banners,
 		chatId,
 		config,
+		isApp,
 		mobile,
 		settings,
 		showControls,

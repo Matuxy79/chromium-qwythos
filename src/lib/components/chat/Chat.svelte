@@ -400,13 +400,25 @@
 		codeInterpreterEnabled = featureDefault('code_interpreter');
 	};
 
-	// Seed as soon as models/config/user are available. This runs before (and
-	// independently of) setDefaults(), which has to fetch tools and skills first,
-	// so the switches are already selected on the first paint of the composer.
-	let featureDefaultsSeeded = false;
-	$: if (!featureDefaultsSeeded && $models?.length && $config && $user) {
-		featureDefaultsSeeded = true;
-		applyFeatureDefaults();
+	// Seed as soon as models/config/user are available, and re-seed whenever the
+	// selected model set changes (the first time models arrive, a model switch, a
+	// chat switch). This runs before — and independently of — setDefaults(), which
+	// has to fetch tools and skills first, so the switches are already selected on
+	// the first paint of the composer. A manual toggle-off is left alone: nothing
+	// here re-applies the default until the model set changes again.
+	let seededFeatureModelKey = '';
+	$: {
+		const featureModelKey = (selectedModels ?? []).filter((id) => id).join(',');
+		if (
+			featureModelKey !== seededFeatureModelKey &&
+			featureModelKey !== '' &&
+			$models?.length &&
+			$config &&
+			$user
+		) {
+			seededFeatureModelKey = featureModelKey;
+			applyFeatureDefaults();
+		}
 	}
 
 	const openWebSearchConfirm = () => {

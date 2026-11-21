@@ -1859,9 +1859,10 @@
 															selectedToolIds = [];
 															selectedFilterIds = [];
 
-															webSearchEnabled = false;
+															// Web search / code interpreter keep their state here: they open selected
+															// by default (see DEFAULT_ENABLED_CHAT_FEATURES), so Escape only clears
+															// the input's tools.
 															imageGenerationEnabled = false;
-															codeInterpreterEnabled = false;
 														}
 													}}
 													on:paste={async (e) => {
