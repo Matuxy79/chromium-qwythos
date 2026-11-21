@@ -98,8 +98,8 @@
 	let voiceInterruption = false;
 	let hapticFeedback = false;
 
-	let webSearch = null;
-	let codeInterpreter = null;
+	let webSearch = 'always';
+	let codeInterpreter = 'always';
 
 	let iframeSandboxAllowSameOrigin = false;
 	let iframeSandboxAllowForms = false;
@@ -195,12 +195,12 @@
 	};
 
 	const toggleWebSearch = async () => {
-		webSearch = webSearch === null ? 'always' : null;
+		webSearch = webSearch === 'never' ? 'always' : 'never';
 		saveSettings({ webSearch: webSearch });
 	};
 
 	const toggleCodeInterpreter = async () => {
-		codeInterpreter = codeInterpreter === null ? 'always' : null;
+		codeInterpreter = codeInterpreter === 'never' ? 'always' : 'never';
 		saveSettings({ codeInterpreter: codeInterpreter });
 	};
 
@@ -289,10 +289,10 @@
 		}
 
 		backgroundImageUrl = $settings?.backgroundImageUrl ?? null;
-		// undefined = never touched -> defaults to 'always' now; explicit null (user picked
-		// "Default" before) stays respected. Keeps this label in sync with Chat.svelte's default.
-		webSearch = $settings?.webSearch === undefined ? 'always' : $settings.webSearch;
-		codeInterpreter = $settings?.codeInterpreter === undefined ? 'always' : $settings.codeInterpreter;
+		// Web search and code interpreter default to 'always' (on) in code. Only an explicit
+		// 'never' turns them off; this keeps the label in sync with Chat.svelte's default.
+		webSearch = $settings?.webSearch === 'never' ? 'never' : 'always';
+		codeInterpreter = $settings?.codeInterpreter === 'never' ? 'never' : 'always';
 
 		textScale = $settings?.textScale ?? null;
 
@@ -1259,7 +1259,7 @@
 						type="button"
 					>
 						<span id="web-search-state"
-							>{webSearch === 'always' ? $i18n.t('Always') : $i18n.t('Default')}</span
+							>{webSearch === 'never' ? $i18n.t('Never') : $i18n.t('Always')}</span
 						>
 					</button>
 				</div>
@@ -1283,7 +1283,7 @@
 						type="button"
 					>
 						<span id="code-interpreter-state"
-							>{codeInterpreter === 'always' ? $i18n.t('Always') : $i18n.t('Default')}</span
+							>{codeInterpreter === 'never' ? $i18n.t('Never') : $i18n.t('Always')}</span
 						>
 					</button>
 				</div>

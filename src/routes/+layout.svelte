@@ -76,7 +76,6 @@
 	import NotificationToast from '$lib/components/NotificationToast.svelte';
 	import AppSidebar from '$lib/components/app/AppSidebar.svelte';
 	import SyncStatsModal from '$lib/components/chat/Settings/SyncStatsModal.svelte';
-	import Spinner from '$lib/components/common/Spinner.svelte';
 	import { getOutputText } from '$lib/components/chat/Messages/structuredOutput';
 	import { getUserSettings } from '$lib/apis/users';
 	import dayjs, { loadDayjsLocale } from '$lib/dayjs';
@@ -129,7 +128,6 @@
 	const BOOT_RELOAD_GRACE_MS = 10000;
 	let versionReloadScheduled = false;
 
-	let showRefresh = false;
 
 	let showSyncStatsModal = false;
 	let syncStatsEventData = null;
@@ -1049,40 +1047,6 @@
 
 		window.addEventListener('message', windowMessageEventHandler);
 
-		let touchstartY = 0;
-
-		function isNavOrDescendant(el) {
-			const nav = document.querySelector('nav'); // change selector if needed
-			return nav && (el === nav || nav.contains(el));
-		}
-
-		const touchstartHandler = (e) => {
-			if (!isNavOrDescendant(e.target)) return;
-			touchstartY = e.touches[0].clientY;
-		};
-
-		const touchmoveHandler = (e) => {
-			if (!isNavOrDescendant(e.target)) return;
-			const touchY = e.touches[0].clientY;
-			const touchDiff = touchY - touchstartY;
-			if (touchDiff > 50 && window.scrollY === 0) {
-				showRefresh = true;
-				e.preventDefault();
-			}
-		};
-
-		const touchendHandler = (e) => {
-			if (!isNavOrDescendant(e.target)) return;
-			if (showRefresh) {
-				showRefresh = false;
-				location.reload();
-			}
-		};
-
-		document.addEventListener('touchstart', touchstartHandler);
-		document.addEventListener('touchmove', touchmoveHandler, { passive: false });
-		document.addEventListener('touchend', touchendHandler);
-
 		if (typeof window !== 'undefined') {
 			if (window.applyTheme) {
 				window.applyTheme();
@@ -1340,9 +1304,6 @@
 		return () => {
 			window.removeEventListener('resize', onResize);
 			window.removeEventListener('message', windowMessageEventHandler);
-			document.removeEventListener('touchstart', touchstartHandler);
-			document.removeEventListener('touchmove', touchmoveHandler);
-			document.removeEventListener('touchend', touchendHandler);
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
 			window.removeEventListener('pagehide', handlePageHidden);
 			window.removeEventListener('pageshow', handlePageVisible);
@@ -1383,12 +1344,6 @@
 >
 	{$i18n.t('Skip to main content')}
 </a>
-
-{#if showRefresh}
-	<div class=" py-5">
-		<Spinner className="size-5" />
-	</div>
-{/if}
 
 {#if loaded}
 	{#if $isApp}

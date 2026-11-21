@@ -92,6 +92,7 @@ class TestToolAutoMode(unittest.TestCase):
                                                 found_keys[sub_k.value] = sub_v.value
                                     self.assertIn('defaultFeatureIds', found_keys)
                                     self.assertIn('web_search', found_keys['defaultFeatureIds'])
+                                    self.assertIn('code_interpreter', found_keys['defaultFeatureIds'])
                                     return
         self.fail("DEFAULT_MODEL_METADATA['venice-uncensored'] was not found or missing defaultFeatureIds")
 

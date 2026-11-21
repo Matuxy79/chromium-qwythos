@@ -85,6 +85,30 @@
 
 	let version;
 	let handledSettingsUrl = '';
+	let mobileViewportHeight: number | null = null;
+
+	// Safari can resize only the visual viewport when its keyboard opens. Keep
+	// the app shell within that area, but never resize the layout during pinch
+	// zoom: doing so would fight the user's accessibility gesture.
+	onMount(() => {
+		const viewport = window.visualViewport;
+		if (!viewport) return;
+		const mobileScreen = window.matchMedia('(max-width: 1023px) and (pointer: coarse)');
+		const updateViewport = () => {
+			if (!mobileScreen.matches) {
+				mobileViewportHeight = null;
+			} else if (Math.abs(viewport.scale - 1) < 0.01) {
+				mobileViewportHeight = viewport.height;
+			}
+		};
+		updateViewport();
+		viewport.addEventListener('resize', updateViewport);
+		mobileScreen.addEventListener('change', updateViewport);
+		return () => {
+			viewport.removeEventListener('resize', updateViewport);
+			mobileScreen.removeEventListener('change', updateViewport);
+		};
+	});
 
 	const clearChatInputStorage = () => {
 		const chatInputKeys = Object.keys(localStorage).filter((key) => key.startsWith('chat-input'));
@@ -500,9 +524,13 @@
 {/if}
 
 {#if $user}
-	<div class="app relative">
+	<div
+		class="app relative h-screen max-h-[100dvh] w-full max-w-full overflow-hidden"
+		style:height={mobileViewportHeight !== null ? `${mobileViewportHeight}px` : undefined}
+		style:--app-visible-height={mobileViewportHeight !== null ? `${mobileViewportHeight}px` : undefined}
+	>
 		<div
-			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-auto flex flex-row justify-end"
+			class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-full min-h-0 w-full max-w-full overflow-hidden flex flex-row justify-end"
 		>
 			{#if !['user', 'admin'].includes($user?.role)}
 				<AccountPending />

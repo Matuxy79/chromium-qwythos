@@ -1,5 +1,15 @@
 # Agent activity log
 
+## 2026-11-21 — Mobile iOS viewport zoom, locked scroll, and unclickable header/sidebar fix
+- Resolved the three core mobile viewport and interaction issues:
+  1. Cleaned viewport meta tag to standard `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />` (removed invalid `interactive-widget=resizes-content` token that broke WebKit layout viewport parsing).
+  2. Enforced `font-size: 16px !important` across all inputs, textareas, and TipTap/ProseMirror elements on mobile screens to prevent iOS Safari auto-zoom on focus. Added `overflow-x: clip` to the app shell.
+  3. Added `hidden md:flex` to the 42px desktop collapsed sidebar rail to prevent pre-hydration horizontal overflow on mobile viewports.
+  4. Fixed flex scroll trap: eliminated competing `overflow-auto` on `#chat-pane` and layout wrapper, leaving `#messages-container` as the single vertical scroll container with `-webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; min-height: 0; flex: 1 1 0%`. Changed inner messages wrapper from `h-full` to `min-h-full` so message feeds expand and scroll naturally without clipping behind composer.
+  5. Fixed top header and sidebar toggle: removed `-webkit-app-region: drag` from mobile web navbar/sidebar, added `pt-[env(safe-area-inset-top,0.375rem)]` notch clearance and bottom composer `pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]` home bar clearance, removed `-mb-12` overlap on mobile, and made `MobileSidebarToggle` rendered with `md:hidden` so it's always tappable.
+- Verified by: vitest test suite passing (2 tests), backend test suite passing (`test_tool_auto_mode.py` 7 tests, `test_openrouter_credentials.py` 13 tests).
+- Loose ends: verify on physical iOS device in both portrait and landscape orientation.
+
 Newest entries first. Format:
 
 ```
@@ -8,6 +18,12 @@ Newest entries first. Format:
 - Verified by: <command or check>
 - Loose ends: <anything left uncertain or broken>
 ```
+
+## 2026-11-21 — Web Search and Code Interpreter on by default
+- Symptom: a new chat with Venice: Uncensored opened with both Integrations switches off. The 2026-11-12 `defaultFeatureIds` seed in `DEFAULT_MODEL_METADATA` does not reach existing installs: `Config.get('models.default_metadata')` returns the stored DB value, and `seed_defaults` never overwrites a key that already exists. Venice's `code_interpreter` seed was also `False`, and its `defaultFeatureIds` omitted it.
+- Changed: `Chat.svelte` `setDefaults` now turns web search and code interpreter on in code. The admin `defaultFeatureIds` list still wins when present; otherwise each feature is on unless the user chose "Never". `Settings/Interface.svelte` toggles are now Always/Never (the old "Default" state, which was off, is gone; unset or old `null` now reads as Always). `backend/qwythos/config.py` seed sets Venice `code_interpreter: True` and `defaultFeatureIds: ['web_search', 'code_interpreter']`. Added `codeInterpreter` to the `Settings` type in `src/lib/stores/index.ts`. `test/test_tool_auto_mode.py` also asserts `code_interpreter` in the Venice defaults.
+- Verified by: `python test/test_tool_auto_mode.py` (7 tests OK); `py_compile backend/qwythos/config.py`; `svelte-check --output machine`, with no new diagnostics in the changed line ranges (the repo already reports about 8,287 pre-existing svelte-check errors). Not run in a browser.
+- Loose ends: a stored DB model with `code_interpreter` false keeps that toggle hidden, because stored config wins over the seed. An admin-saved `defaultFeatureIds` list still overrides the default per model. Anyone who had picked "Default" for either setting now gets "Always"; "Never" is the only off state.
 
 ## 2026-11-12 — PDF upload fails with "No embedding model is loaded" (error text fixed)
 - Symptom: a 36.6 MB PDF attached in chat with Venice Uncensored fails with "No embedding model is loaded. Set RAG_EMBEDDING_MODEL to a valid SentenceTransformer model name...".

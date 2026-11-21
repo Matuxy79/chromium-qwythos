@@ -53,7 +53,7 @@
 	} from '$lib/stores';
 	import { refreshChatList, refreshFolderChatLists } from '$lib/stores/chatList';
 
-	import { WEBUI_API_BASE_URL } from '$lib/constants';
+	import { WEBUI_API_BASE_URL, DEFAULT_ENABLED_CHAT_FEATURES } from '$lib/constants';
 
 	import {
 		convertMessagesToHistory,
@@ -326,16 +326,88 @@
 	let webSearchConfirmed = false;
 
 	// webSearchEnabled/codeInterpreterEnabled are the actual per-message toggle
-	// state (bound into the message-input switch), pre-seeded to the user's
-	// "always" default in setDefaults() below. webSearchActive just re-applies
-	// the admin/permission gate on top so a stale toggle can't survive a
-	// config change mid-session; it deliberately does NOT OR in the settings
-	// default itself, or a manual toggle-off would have no way to stick.
+	// state (bound into the message-input switch). They are seeded from the
+	// code-level default in DEFAULT_ENABLED_CHAT_FEATURES by applyFeatureDefaults()
+	// below, which every chat-open / chat-switch / model-change path runs.
+	// webSearchActive just re-applies the admin/permission gate on top so a stale
+	// toggle can't survive a config change mid-session; it deliberately does NOT
+	// OR in the state default itself, or a manual toggle-off would have no way to
+	// stick.
 	$: webSearchActive = Boolean(
 		$config?.features?.enable_web_search &&
 		($user?.role === 'admin' || $user?.permissions?.features?.web_search) &&
 		webSearchEnabled
 	);
+
+	/**
+	 * Whether a chat feature should open switched on.
+	 *
+	 * Availability is checked first and always wins: the selected model(s) must
+	 * support the capability (missing keys count as supported, matching how the
+	 * message input decides to render the switch), the server must have the
+	 * feature enabled, and the user must have permission for it. Only then does
+	 * the code-level default from `DEFAULT_ENABLED_CHAT_FEATURES` decide, with an
+	 * explicit "Never" in Settings > Interface honoured as a per-user opt-out.
+	 */
+	const featureDefault = (feature: 'web_search' | 'code_interpreter'): boolean => {
+		if (!DEFAULT_ENABLED_CHAT_FEATURES[feature]) {
+			return false;
+		}
+
+		const modelIds = (selectedModels ?? []).filter((id) => id);
+		if (modelIds.length === 0) {
+			return false;
+		}
+
+		const capable = modelIds.every((id) => {
+			const model = ($models ?? []).find((m) => m.id === id);
+			return model ? (model.info?.meta?.capabilities?.[feature] ?? true) : false;
+		});
+		if (!capable) {
+			return false;
+		}
+
+		if (feature === 'code_interpreter') {
+			// Code interpreter and a terminal are mutually exclusive.
+			if ($selectedTerminalId) {
+				return false;
+			}
+			if (
+				!$config?.features?.enable_code_interpreter ||
+				!($user?.role === 'admin' || $user?.permissions?.features?.code_interpreter)
+			) {
+				return false;
+			}
+			return $settings?.codeInterpreter !== 'never';
+		}
+
+		if (
+			!$config?.features?.enable_web_search ||
+			!($user?.role === 'admin' || $user?.permissions?.features?.web_search)
+		) {
+			return false;
+		}
+		return $settings?.webSearch !== 'never';
+	};
+
+	/**
+	 * Seed both feature switches from the code-level default. Called on mount, on
+	 * new chat, on chat switch and whenever the default model changes; a manual
+	 * toggle-off still sticks for the messages the user sends afterwards.
+	 */
+	const applyFeatureDefaults = () => {
+		webSearchEnabled = featureDefault('web_search');
+		codeInterpreterEnabled = featureDefault('code_interpreter');
+	};
+
+	// Seed as soon as models/config/user are available. This runs before (and
+	// independently of) setDefaults(), which has to fetch tools and skills first,
+	// so the switches are already selected on the first paint of the composer.
+	let featureDefaultsSeeded = false;
+	$: if (!featureDefaultsSeeded && $models?.length && $config && $user) {
+		featureDefaultsSeeded = true;
+		applyFeatureDefaults();
+	}
 
 	const openWebSearchConfirm = () => {
 		window.setTimeout(() => {
@@ -555,8 +627,10 @@
 		selectedToolIds = [];
 		selectedSkillIds = [];
 		selectedFilterIds = [];
-		webSearchEnabled = false;
 		imageGenerationEnabled = false;
+		// Code-level default: web search / code interpreter stay selected across a
+		// chat switch instead of being cleared here.
+		applyFeatureDefaults();
 
 		const storageChatInput = sessionStorage.getItem(
 			`chat-input${chatIdProp ? `-${chatIdProp}` : ''}`
@@ -594,9 +668,10 @@
 						selectedToolIds = input.selectedToolIds;
 						selectedSkillIds = input.selectedSkillIds ?? [];
 						selectedFilterIds = input.selectedFilterIds;
-						webSearchEnabled = input.webSearchEnabled;
 						imageGenerationEnabled = input.imageGenerationEnabled;
-						codeInterpreterEnabled = input.codeInterpreterEnabled;
+						// Drafts no longer dictate these two: a restored draft keeps the
+						// code-level default rather than whatever was saved with it.
+						applyFeatureDefaults();
 					}
 				} catch (e) {}
 			} else {
@@ -642,9 +717,8 @@
 		selectedToolIds = [];
 		selectedSkillIds = [];
 		selectedFilterIds = [];
-		webSearchEnabled = false;
 		imageGenerationEnabled = false;
-		codeInterpreterEnabled = false;
+		applyFeatureDefaults();
 		prompt = '';
 		messageInput?.setText('');
 		await chatId.set('');
@@ -713,9 +787,8 @@
 		selectedSkillIds = [];
 		selectedFilterIds = [];
 		pendingOAuthTools = [];
-		webSearchEnabled = false;
 		imageGenerationEnabled = false;
-		codeInterpreterEnabled = false;
+		applyFeatureDefaults();
 
 		if (selectedModelIds.filter((id) => id).length > 0) {
 			await setDefaults();
@@ -832,45 +905,22 @@
 					}
 				}
 
-				// Web search / code interpreter: an admin-curated defaultFeatureIds list on
-				// the model wins when present; otherwise fall back to the user's global
-				// "Web Search in Chat" / "Code Interpreter in Chat" preference (Settings >
-				// Interface). undefined = never touched -> defaults to 'always'; explicit
-				// null (user picked "Default") is respected.
-				if (
-					model.info?.meta?.capabilities?.['web_search'] &&
-					$config?.features?.enable_web_search &&
-					($user?.role === 'admin' || $user?.permissions?.features?.web_search)
-				) {
-					if (model?.info?.meta?.defaultFeatureIds) {
-						webSearchEnabled = model.info.meta.defaultFeatureIds.includes('web_search');
-					} else {
-						const webSearchMode = $settings?.webSearch === undefined ? 'always' : $settings.webSearch;
-						webSearchEnabled = webSearchMode === 'always';
-					}
-				}
-
-				if (
-					model.info?.meta?.capabilities?.['code_interpreter'] &&
-					$config?.features?.enable_code_interpreter &&
-					($user?.role === 'admin' || $user?.permissions?.features?.code_interpreter)
-				) {
-					if (model?.info?.meta?.defaultFeatureIds) {
-						codeInterpreterEnabled = model.info.meta.defaultFeatureIds.includes('code_interpreter');
-					} else {
-						const codeInterpreterMode =
-							$settings?.codeInterpreter === undefined ? 'always' : $settings.codeInterpreter;
-						codeInterpreterEnabled = codeInterpreterMode === 'always';
-					}
-				}
-
-				// Set Default Terminal — only if the referenced terminal actually exists
+				// Set Default Terminal — only if the referenced terminal actually exists.
+				// Runs before the feature defaults below because code interpreter and a
+				// terminal are mutually exclusive.
 				if (model?.info?.meta?.terminalId) {
 					const tid = model.info.meta.terminalId;
 					if (isTerminalAvailable(tid)) {
 						selectedTerminalId.set(tid);
 					}
 				}
+
+				// Web search / code interpreter come up switched on from the code-level
+				// default (DEFAULT_ENABLED_CHAT_FEATURES), gated on model capability,
+				// server config and permissions. This replaces the old behaviour of
+				// seeding them from a model's `defaultFeatureIds` list or from the user's
+				// Settings > Interface preference (now only honoured as a "Never" opt-out).
+				applyFeatureDefaults();
 			}
 		} finally {
 			settingDefaults = false;
@@ -1381,9 +1431,8 @@
 				selectedToolIds = [];
 				selectedSkillIds = [];
 				selectedFilterIds = [];
-				webSearchEnabled = false;
 				imageGenerationEnabled = false;
-				codeInterpreterEnabled = false;
+				applyFeatureDefaults();
 
 				try {
 					const input = JSON.parse(storageChatInput);
@@ -1394,9 +1443,10 @@
 						selectedToolIds = input.selectedToolIds;
 						selectedSkillIds = input.selectedSkillIds ?? [];
 						selectedFilterIds = input.selectedFilterIds;
-						webSearchEnabled = input.webSearchEnabled;
 						imageGenerationEnabled = input.imageGenerationEnabled;
-						codeInterpreterEnabled = input.codeInterpreterEnabled;
+						// Drafts no longer dictate these two: a restored draft keeps the
+						// code-level default rather than whatever was saved with it.
+						applyFeatureDefaults();
 					}
 				} catch (e) {}
 			}
@@ -3800,16 +3850,14 @@
 />
 
 <div
-	class="{embedded
-		? 'h-full'
-		: 'h-screen max-h-[100dvh]'} transition-width duration-200 ease-in-out {$showSidebar &&
+	class="h-full transition-width duration-200 ease-in-out {$showSidebar &&
 	!embedded
 		? '  md:max-w-[calc(100%-var(--sidebar-width))]'
-		: ' '} w-full max-w-full flex flex-col"
+		: ' '} w-full max-w-full min-w-0 min-h-0 flex flex-col"
 	id={chatContainerId}
 >
 	{#if !loading}
-		<div in:fade={{ duration: 50 }} class="w-full h-full flex flex-col">
+		<div in:fade={{ duration: 50 }} class="w-full h-full min-w-0 min-h-0 flex flex-col">
 			{#if !embedded && $selectedFolder && $selectedFolder?.meta?.background_image_url}
 				<div
 					class="absolute top-0 left-0 w-full h-full bg-cover bg-center bg-no-repeat"
@@ -3831,8 +3879,8 @@
 				/>
 			{/if}
 
-			<PaneGroup direction="horizontal" class="w-full h-full">
-				<Pane defaultSize={50} minSize={30} class="h-full flex relative max-w-full flex-col">
+			<PaneGroup direction="horizontal" class="w-full h-full min-w-0 min-h-0">
+				<Pane defaultSize={50} minSize={30} class="h-full min-w-0 min-h-0 flex relative max-w-full flex-col">
 					<FilesOverlay show={dragged} />
 					{#if embedded}
 						<div
@@ -3924,10 +3972,10 @@
 							}}
 						/>
 					{/if}
-					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
+					<div id="chat-pane" class="flex flex-col flex-auto min-h-0 min-w-0 z-10 w-full @container overflow-hidden">
 						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
 							<div
-								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
+								class=" pb-2.5 flex flex-col justify-between w-full min-w-0 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain max-w-full z-10 scrollbar-hidden"
 								id="messages-container"
 								bind:this={messagesContainerElement}
 								on:scroll={(e) => {
@@ -3937,7 +3985,7 @@
 									isNearTop = messagesContainerElement.scrollTop <= 100;
 								}}
 							>
-								<div class=" h-full w-full flex flex-col">
+								<div class=" min-h-full w-full flex flex-col">
 									<Messages
 										bind:this={messagesRef}
 										chatId={$chatId}
@@ -3950,7 +3998,7 @@
 										}}
 										bind:selectedModels
 										{atSelectedModel}
-										className={embedded ? 'h-full flex pt-4' : 'h-full flex pt-18'}
+										className={embedded ? 'min-h-full w-full flex flex-col pt-4' : 'min-h-full w-full flex flex-col pt-2 md:pt-18'}
 										{sendMessage}
 										{showMessage}
 										{submitMessage}
@@ -3978,7 +4026,7 @@
 							{:else}
 								<div
 									id={embedded ? messageInputDropzoneId : undefined}
-									class=" pb-2 {dragged ? 'z-0' : 'z-10'}"
+									class=" pb-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] shrink-0 {dragged ? 'z-0' : 'z-10'}"
 								>
 									<MessageInput
 										bind:this={messageInput}

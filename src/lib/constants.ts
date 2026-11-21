@@ -116,6 +116,20 @@ export const PASTED_TEXT_CHARACTER_LIMIT = 1000;
 
 export const LLM_COUNCIL_MODEL_ID = 'llm-council';
 
+// Chat features the fork switches ON as soon as a chat opens, so the composer's
+// integration switches (Web Search / Code Interpreter) come up already selected.
+//
+// These are resolved in `chat/Chat.svelte` by `applyFeatureDefaults()`, which runs on
+// mount, on every new chat, chat switch and model change. Availability always wins
+// first: a feature the selected model does not support, the server has disabled
+// (`features.enable_*`), or the user has no permission for is never selected. An
+// explicit "Never" in Settings > Interface (the per-user `webSearch` /
+// `codeInterpreter` preference) is still honoured as an opt-out.
+export const DEFAULT_ENABLED_CHAT_FEATURES: Record<'web_search' | 'code_interpreter', boolean> = {
+	web_search: true,
+	code_interpreter: true
+};
+
 // Source: https://kit.svelte.dev/docs/modules#$env-static-public
 // This feature, akin to $env/static/private, exclusively incorporates environment variables
 // that are prefixed with config.kit.env.publicPrefix (usually set to PUBLIC_).

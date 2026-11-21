@@ -601,7 +601,7 @@
 					showSidebar.set(false);
 				}
 
-				if ($showSidebar && !value) {
+				if ($showSidebar && !value && $isApp) {
 					const navElement = document.getElementsByTagName('nav')[0];
 					if (navElement) {
 						navElement.style['-webkit-app-region'] = 'drag';
@@ -615,14 +615,10 @@
 				const navElement = document.getElementsByTagName('nav')[0];
 
 				if (navElement) {
-					if ($mobile) {
-						if (!value) {
-							navElement.style['-webkit-app-region'] = 'drag';
-						} else {
-							navElement.style['-webkit-app-region'] = 'no-drag';
-						}
-					} else {
+					if ($isApp && !$mobile) {
 						navElement.style['-webkit-app-region'] = 'drag';
+					} else {
+						navElement.style['-webkit-app-region'] = 'no-drag';
 					}
 				}
 
@@ -840,9 +836,12 @@
 	<div
 		class=" {$isApp
 			? ' ml-[4.5rem] md:ml-0'
-			: ''} fixed md:hidden z-40 top-0 right-0 left-0 bottom-0 bg-black/60 w-full min-h-screen h-screen flex justify-center overflow-hidden overscroll-contain"
+			: ''} fixed md:hidden z-40 top-0 right-0 left-0 bottom-0 bg-black/60 w-full min-h-[100dvh] h-full flex justify-center overflow-hidden overscroll-contain"
 		on:mousedown={() => {
-			showSidebar.set(!$showSidebar);
+			showSidebar.set(false);
+		}}
+		on:click={() => {
+			showSidebar.set(false);
 		}}
 	/>
 {/if}
@@ -877,7 +876,7 @@
 
 {#if !$mobile && !$showSidebar}
 	<div
-		class=" w-[42px] shrink-0 py-1 px-1 flex flex-col justify-between text-gray-700 dark:text-gray-300 hover:bg-gray-50/30 dark:hover:bg-gray-800/30 h-full z-10 transition-all border-e-[0.5px] border-gray-50 dark:border-gray-850/30"
+		class="hidden md:flex w-[42px] shrink-0 py-1 px-1 flex-col justify-between text-gray-700 dark:text-gray-300 hover:bg-gray-50/30 dark:hover:bg-gray-800/30 h-full z-10 transition-all border-e-[0.5px] border-gray-50 dark:border-gray-850/30"
 		id="sidebar"
 		role="navigation"
 		aria-label={$i18n.t('Chat history')}
@@ -1074,7 +1073,7 @@
 		id="sidebar"
 		role="navigation"
 		aria-label={$i18n.t('Chat history')}
-		class="h-screen max-h-[100dvh] min-h-screen select-none {$showSidebar
+		class="h-screen max-h-[100dvh] select-none {$showSidebar
 			? `${$mobile ? 'bg-gray-50 dark:bg-gray-950' : 'bg-gray-50/70 dark:bg-gray-950/70'} z-50`
 			: ' bg-transparent z-0 '} {$isApp
 			? `ml-[4.5rem] md:ml-0 `
@@ -1084,7 +1083,7 @@
 		data-state={$showSidebar}
 	>
 		<div
-			class=" my-auto flex flex-col justify-between h-screen max-h-[100dvh] w-[var(--sidebar-width)] overflow-x-hidden scrollbar-hidden z-50 border-e border-gray-50 dark:border-gray-850/30 {$showSidebar
+			class=" mobile-sidebar-content my-auto flex flex-col justify-between h-screen max-h-[100dvh] w-[min(var(--sidebar-width),85vw)] md:w-[var(--sidebar-width)] overflow-x-hidden scrollbar-hidden z-50 border-e border-gray-50 dark:border-gray-850/30 {$showSidebar
 				? ''
 				: 'invisible'}"
 		>
@@ -1143,7 +1142,7 @@
 			</div>
 
 			<div
-				class="relative flex flex-col flex-1 overflow-y-auto scrollbar-hidden pt-2.5 pb-2.5"
+				class="relative flex flex-col flex-1 min-h-0 overflow-y-auto overscroll-contain scrollbar-hidden pt-2.5 pb-2.5"
 				on:scroll={(e) => {
 					if (e.target.scrollTop === 0) {
 						scrollTop = 0;

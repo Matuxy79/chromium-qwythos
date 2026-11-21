@@ -23,6 +23,42 @@ html {
 	font-size: calc(1rem * var(--app-text-scale, 1));
 }
 
+@media (max-width: 768px), (max-width: 1023px) and (pointer: coarse) {
+	.app {
+		box-sizing: border-box;
+		overflow-x: clip;
+	}
+
+	/* iOS Safari auto-zooms whenever an input has font-size < 16px on focus. */
+	#chat-input,
+	#chat-input .ProseMirror,
+	#chat-input .ProseMirror p,
+	.input-prose,
+	.input-prose p,
+	.input-prose textarea,
+	.input-prose input,
+	.input-prose-sm,
+	.input-prose-sm p,
+	input,
+	textarea {
+		font-size: 16px !important;
+	}
+
+	#chat-input-container {
+		max-height: min(24rem, calc(var(--app-visible-height, 100dvh) * 0.3));
+	}
+
+	.mobile-sidebar-content {
+		padding-top: env(safe-area-inset-top, 0px);
+		padding-bottom: env(safe-area-inset-bottom, 0px);
+	}
+
+	#messages-container {
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior-y: contain;
+	}
+}
+
 #sidebar-chat-item {
 	/* sidebar item sizing scales for the chat list entries */
 	min-height: calc(32px * var(--app-text-scale, 1));

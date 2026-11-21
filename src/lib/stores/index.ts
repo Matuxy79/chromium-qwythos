@@ -409,6 +409,7 @@ type Settings = {
 	params?: any;
 	userLocation?: any;
 	webSearch?: any;
+	codeInterpreter?: any;
 	memory?: boolean;
 	autoTags?: boolean;
 	autoFollowUps?: boolean;
