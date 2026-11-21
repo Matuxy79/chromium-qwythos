@@ -18,7 +18,7 @@
 		? 'md:max-w-[calc(100%-var(--sidebar-width))]'
 		: ''} max-w-full"
 >
-	<nav class="pb-1 px-2.5 pt-2 backdrop-blur-xl drag-region select-none">
+	<nav class="ios-safe-top pb-1 px-2.5 pt-2 backdrop-blur-xl drag-region select-none">
 		<div class="flex items-center gap-0.5 md:gap-1">
 			{#if $mobile}
 				<div class="{$showSidebar ? 'md:hidden' : ''} self-center flex flex-none items-center">

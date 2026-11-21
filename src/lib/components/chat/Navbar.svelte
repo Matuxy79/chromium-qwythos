@@ -81,7 +81,7 @@
 
 <nav
 	class="shrink-0 z-30 w-full {$mobile
-		? 'pt-[env(safe-area-inset-top,0.375rem)]'
+		? 'pt-1.5 ios-safe-top'
 		: 'pt-0.5'} pb-1 flex flex-col items-center {$mobile ? '' : '-mb-12'} {!$mobile && $isApp ? 'drag-region' : ''}"
 >
 	<div class="flex items-center w-full {$mobile ? 'px-2.5' : 'pl-1.5 pr-1'}">

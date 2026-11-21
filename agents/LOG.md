@@ -1,5 +1,45 @@
 # Agent activity log
 
+## 2026-11-21 — Web Search + Code Interpreter switched on by default (code level)
+
+- Added `DEFAULT_ENABLED_CHAT_FEATURES` to `src/lib/constants.ts`: Web Search and
+  Code Interpreter now start **on** in the composer instead of inheriting an
+  untouched (or legacy `null`) per-user preference or a model's
+  `defaultFeatureIds` list, which left both switches off on open.
+- New `src/lib/utils/chatFeatures.ts` (+ `chatFeatures.test.ts`): pure
+  `isChatFeatureAvailable()` / `resolveChatFeatureDefault(s)` decide the state a
+  chat opens in. Availability always wins first — model capability (missing keys
+  count as supported, matching how `MessageInput` decides to render the switch),
+  the server's `features.enable_web_search` / `enable_code_interpreter` flags,
+  the user's permission, and terminal-vs-code-interpreter exclusivity — then the
+  code default, with an explicit "Never" in Settings → Interface honoured as an
+  opt-out.
+- `src/lib/components/chat/Chat.svelte`: `applyFeatureDefaults()` feeds those
+  resolvers from the stores and runs on model arrival / model switch (reactive
+  key over the selected model ids), inside `setDefaults()`, in `initNewChat()`,
+  `resetInput()` (model change) and on chat switch (`navigateHandler`). The old
+  seeding from `model.info.meta.defaultFeatureIds` and from the raw per-user
+  preference is gone for these two features.
+- Draft restore (`sessionStorage` `chat-input*`) no longer overwrites the two
+  switches, so reopening a chat with a saved draft keeps the default. A manual
+  toggle-off still sticks for the rest of the session: nothing re-applies the
+  default until the model set or chat changes.
+- `src/lib/components/chat/MessageInput.svelte`: Escape now only clears tools /
+  filters / image generation, not the two feature switches.
+- `src/lib/components/chat/Navbar.svelte`: added the missing `isApp` store
+  import — `$isApp` was referenced without importing it, which failed
+  `vite build` outright (unrelated pre-existing break, fixed to unblock the
+  build).
+- Verified by: `vitest run src/lib/utils/chatFeatures.test.ts` (12 tests: default
+  on, legacy `null`/`undefined`/`always` preferences read as on, explicit "Never"
+  opts out, missing capability keys count as supported, per-model/config/permission
+  gates, terminal exclusivity, no-model and mixed-model cases); `svelte-check`
+  reporting nothing for the touched files; a full production build
+  (`node_modules/.bin/vite build`) writing a fresh `build/`.
+- Loose ends: needs a live run of the app (backend + rebuilt frontend) to confirm
+  the switches render on for an OpenRouter model such as `venice-uncensored`;
+  not exercised here because no backend/data dir was available in this checkout.
+
 ## 2026-11-21 — Mobile iOS viewport zoom, locked scroll, and unclickable header/sidebar fix
 - Resolved the three core mobile viewport and interaction issues:
   1. Cleaned viewport meta tag to standard `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />` (removed invalid `interactive-widget=resizes-content` token that broke WebKit layout viewport parsing).

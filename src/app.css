@@ -48,8 +48,20 @@ html {
 		max-height: min(24rem, calc(var(--app-visible-height, 100dvh) * 0.3));
 	}
 
+	/*
+	 * iOS draws the page under the status bar (viewport-fit=cover with
+	 * black-translucent). env() is always defined on iOS and reports 0 when iOS
+	 * sees no top inset, so an env() fallback never applies. Keep a floor that
+	 * clears the status bar, the notch and the Dynamic Island.
+	 */
+	@supports (-webkit-touch-callout: none) {
+		.ios-safe-top,
+		.mobile-sidebar-content {
+			padding-top: max(env(safe-area-inset-top, 0px), 3.75rem);
+		}
+	}
+
 	.mobile-sidebar-content {
-		padding-top: env(safe-area-inset-top, 0px);
 		padding-bottom: env(safe-area-inset-bottom, 0px);
 	}
 

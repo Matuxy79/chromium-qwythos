@@ -53,7 +53,7 @@
 	} from '$lib/stores';
 	import { refreshChatList, refreshFolderChatLists } from '$lib/stores/chatList';
 
-	import { WEBUI_API_BASE_URL, DEFAULT_ENABLED_CHAT_FEATURES } from '$lib/constants';
+	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
 	import {
 		convertMessagesToHistory,
@@ -70,6 +70,7 @@
 	} from '$lib/utils';
 	import { AudioQueue } from '$lib/utils/audio';
 	import { createTemporaryChatId, isTemporaryChatId } from '$lib/utils/chatId';
+import { resolveChatFeatureDefaults } from '$lib/utils/chatFeatures';
 	import { getOutputText } from './Messages/structuredOutput';
 
 	import {
@@ -340,64 +341,26 @@
 	);
 
 	/**
-	 * Whether a chat feature should open switched on.
-	 *
-	 * Availability is checked first and always wins: the selected model(s) must
-	 * support the capability (missing keys count as supported, matching how the
-	 * message input decides to render the switch), the server must have the
-	 * feature enabled, and the user must have permission for it. Only then does
-	 * the code-level default from `DEFAULT_ENABLED_CHAT_FEATURES` decide, with an
-	 * explicit "Never" in Settings > Interface honoured as a per-user opt-out.
-	 */
-	const featureDefault = (feature: 'web_search' | 'code_interpreter'): boolean => {
-		if (!DEFAULT_ENABLED_CHAT_FEATURES[feature]) {
-			return false;
-		}
-
-		const modelIds = (selectedModels ?? []).filter((id) => id);
-		if (modelIds.length === 0) {
-			return false;
-		}
-
-		const capable = modelIds.every((id) => {
-			const model = ($models ?? []).find((m) => m.id === id);
-			return model ? (model.info?.meta?.capabilities?.[feature] ?? true) : false;
-		});
-		if (!capable) {
-			return false;
-		}
-
-		if (feature === 'code_interpreter') {
-			// Code interpreter and a terminal are mutually exclusive.
-			if ($selectedTerminalId) {
-				return false;
-			}
-			if (
-				!$config?.features?.enable_code_interpreter ||
-				!($user?.role === 'admin' || $user?.permissions?.features?.code_interpreter)
-			) {
-				return false;
-			}
-			return $settings?.codeInterpreter !== 'never';
-		}
-
-		if (
-			!$config?.features?.enable_web_search ||
-			!($user?.role === 'admin' || $user?.permissions?.features?.web_search)
-		) {
-			return false;
-		}
-		return $settings?.webSearch !== 'never';
-	};
-
-	/**
-	 * Seed both feature switches from the code-level default. Called on mount, on
-	 * new chat, on chat switch and whenever the default model changes; a manual
-	 * toggle-off still sticks for the messages the user sends afterwards.
+	 * Seed both feature switches from the code-level default
+	 * (`DEFAULT_ENABLED_CHAT_FEATURES`), resolved by `$lib/utils/chatFeatures`.
+	 * Availability — model capability, server feature flags, permissions, and the
+	 * terminal/code-interpreter exclusivity — always wins first, then the code
+	 * default, with an explicit "Never" in Settings > Interface as an opt-out.
+	 * Called on model arrival/model switch, new chat, chat switch and model change;
+	 * a manual toggle-off still sticks for the messages sent afterwards.
 	 */
 	const applyFeatureDefaults = () => {
-		webSearchEnabled = featureDefault('web_search');
-		codeInterpreterEnabled = featureDefault('code_interpreter');
+		const defaults = resolveChatFeatureDefaults({
+			models: $models,
+			selectedModelIds: selectedModels,
+			featuresConfig: $config?.features,
+			user: $user,
+			settings: $settings,
+			selectedTerminalId: $selectedTerminalId
+		});
+
+		webSearchEnabled = defaults.webSearchEnabled;
+		codeInterpreterEnabled = defaults.codeInterpreterEnabled;
 	};
 
 	// Seed as soon as models/config/user are available, and re-seed whenever the

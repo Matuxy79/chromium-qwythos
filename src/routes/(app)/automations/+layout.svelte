@@ -71,7 +71,7 @@
 		: ''} max-w-full"
 >
 	<div class="flex h-full min-h-0 flex-col">
-		<div class="shrink-0 px-2.5 pt-2 pb-1">
+		<div class="ios-safe-top shrink-0 px-2.5 pt-2 pb-1">
 			<div class="flex items-center gap-0.5 md:gap-1">
 				{#if $mobile}
 					<div class="{$showSidebar ? 'md:hidden' : ''} flex flex-none items-center">
